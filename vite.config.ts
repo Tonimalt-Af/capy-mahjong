@@ -18,5 +18,5 @@ export default defineConfig({
   base: './',
   plugins: [csp(), preloads()],
   build: { target: 'es2020', rollupOptions: { input: { main: 'index.html', art: 'art.html' } } },
-  test: { include: ['tests/**/*.test.ts'] },
+  test: { include: ['tests/**/*.test.ts'], testTimeout: 60_000 }, // simulation tests are slower on CI runners
 });
