@@ -95,12 +95,17 @@ test('zen difficulty picker: Expert gives a big board, choice is remembered', as
   const st = await G(page).state(); expect(['tortue', 'capy', 'montagne', 'etoile']).toContain(st!.layout);
   await expect(page.locator('#g-lvl')).toContainText('Expert'); expect((await saveOf(page)).diff).toBe('expert');
 });
-test('match highlighting shows playable partners, and can be turned off', async ({ page }) => {
-  await seed(page); await page.goto('/?level=3'); await page.waitForTimeout(900);
+test('match highlighting is off by default (old saves migrated once), can be turned on in Réglages and stays on', async ({ page }) => {
+  await seed(page, { settings: { sfx: false, music: false, dim: true, vibrate: false, hl: true } }); await page.goto('/?level=3'); await page.waitForTimeout(900);
   type S2 = { __game: { select: (n: number) => void } };
+  await page.evaluate(() => (window as unknown as S2).__game.select(1)); await expect(page.locator('.tile.sel')).toHaveCount(1);
+  await expect(page.locator('.tile.mate')).toHaveCount(0); await expect(page.locator('body')).toHaveClass(/\bdim\b/); await expect(page.locator('.tile.blocked').first()).toBeVisible(); // dimming unchanged
+  await tap(page, '#g-pause'); await tap(page, '#p-settings'); await expect(page.locator('#s-hl')).toHaveAttribute('aria-checked', 'false');
+  await tap(page, '#s-hl'); await tap(page, '#s-ok'); await tap(page, '#p-resume').catch(() => {});
+  expect((await saveOf(page)).settings).toMatchObject({ hl: true, v: 2 });
+  await page.reload(); await page.waitForTimeout(900);
   await page.evaluate(() => (window as unknown as S2).__game.select(1)); await expect(page.locator('.tile.mate').first()).toBeVisible();
-  await tap(page, '#g-pause'); await tap(page, '#p-settings'); await tap(page, '#s-hl'); await tap(page, '#s-ok'); await tap(page, '#p-resume').catch(() => {});
-  expect((await saveOf(page)).settings.hl).toBe(false); await expect(page.locator('.tile.mate')).toHaveCount(0);
+  expect((await saveOf(page)).settings.hl).toBe(true);
 });
 test('auto-hint (opt-in) nudges a pair after 20 s idle, without spending a hint', async ({ page }) => {
   await page.clock.install(); await seed(page, { settings: { sfx: false, music: false, dim: true, vibrate: false, hl: true, autohint: true } }); await page.goto('/?level=2');
@@ -140,7 +145,8 @@ test('first-ever game: the first pair glows with a pointing hand until it is mat
   await seed(page); await page.goto('/?level=0'); await page.waitForTimeout(1200);
   await expect(page.locator('.tile.coach')).toHaveCount(2); await expect(page.locator('.tile .hand')).toHaveCount(1);
   const ids = await page.locator('.tile.coach').evaluateAll((e) => e.map((x) => (x as HTMLElement).dataset.id));
-  await tap(page, `.tile[data-id="${ids[0]}"]`); await expect(page.locator('.tile.coach .hand')).toHaveCount(1);
+  await expect(page.locator('.tile.mate')).toHaveCount(0);
+  await tap(page, `.tile[data-id="${ids[0]}"]`); await expect(page.locator('.tile.coach .hand')).toHaveCount(1); await expect(page.locator('.tile.coach')).toHaveCount(2); await expect(page.locator('.tile.mate')).toHaveCount(0);
   await tap(page, `.tile[data-id="${ids[1]}"]`);
   await expect(page.locator('.tile.coach')).toHaveCount(0); await expect(page.locator('.hand')).toHaveCount(0); await expect(page.locator('.toast')).toContainText('Bravo');
 });

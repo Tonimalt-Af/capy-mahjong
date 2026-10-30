@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { SONGS, DEFAULT_MUSIC, DEFAULT_SFX } from '../src/audio';
-import { migrateSettings } from '../src/storage';
+import { migrateSettings, SETTINGS_V } from '../src/storage';
 
 describe('lo-fi songs', () => {
   test('one song per world, every chord parses into a playable voicing', () => {
@@ -17,10 +17,19 @@ describe('lo-fi songs', () => {
 });
 
 describe('settings migration', () => {
+  test('pair highlight is off by default and switched off once for older saves', () => {
+    expect(migrateSettings(null)).toMatchObject({ hl: false, v: SETTINGS_V });
+    expect(migrateSettings({ hl: true })).toMatchObject({ hl: false, v: SETTINGS_V });
+    expect(migrateSettings({ hl: true, v: 1 }).hl).toBe(false);
+    // re-enabled after the migration: kept, and stays kept on later loads
+    const again = migrateSettings({ ...migrateSettings({ hl: true }), hl: true });
+    expect(again.hl).toBe(true); expect(migrateSettings(JSON.parse(JSON.stringify(again))).hl).toBe(true);
+    expect(migrateSettings({ hl: false, v: 2 }).hl).toBe(false);
+  });
   test('old saves without volumes get the new softer defaults', () => {
     const s = migrateSettings({ sfx: false, music: true, dim: true, vibrate: false });
     expect(s.musicVol).toBe(DEFAULT_MUSIC); expect(s.sfxVol).toBe(DEFAULT_SFX);
-    expect(s.sfx).toBe(false); expect(s.hl).toBe(true);
+    expect(s.sfx).toBe(false); expect(s.hl).toBe(false);
   });
   test('volumes the player chose are kept, invalid ones are repaired', () => {
     expect(migrateSettings({ musicVol: 0.2, sfxVol: 1 })).toMatchObject({ musicVol: 0.2, sfxVol: 1 });
