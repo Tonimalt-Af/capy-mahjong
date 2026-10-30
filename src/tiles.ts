@@ -46,75 +46,143 @@ const p = (m: Mode, d: string, fill: string) => `<path d="${d}" ${f(m, fill)}/>`
 // details only drawn in colour pass
 const det = (m: Mode, s: string) => (m === 'c' ? s : '');
 
-function capyBody(m: Mode) {
+// Capybara palette (warm reddish-brown, research: coarse reddish-brown fur, darker snout and legs)
+const C = { fur: '#B67A4A', furL: '#D19A66', furH: '#E7B98A', furD: '#94603A', deep: '#6E4024', muz: '#C48B5C', nose: '#4A2A18', ink: '#33200F', blush: '#F28C82', ear: '#E9957E' };
+const blushMarks = (x: number, y: number, rx = 5.5, ry = 3.4) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${C.blush}" opacity=".78"/><path d="M${x - 2.4} ${y - 1} l1.5 -1.4 M${x + .8} ${y - 1} l1.5 -1.4" stroke="#fff" stroke-width=".9" stroke-linecap="round" opacity=".85"/>`;
+
+/** A · "Onsen zen": front-facing sitting capybara, brick head, sleepy half-closed eyes (the mascot). */
+function capyFront(m: Mode) {
   return [
-    e(m, 50, 96, 30, 17, P.furDark),
-    // ears
-    e(m, 31, 44, 7, 6, P.furDeep), e(m, 69, 44, 7, 6, P.furDeep),
-    // head (big, round = cute)
-    p(m, 'M22 70 C20 50 32 40 50 40 C68 40 80 50 78 70 C77 86 66 92 50 92 C34 92 23 86 22 70Z', P.fur),
-    det(m, `<ellipse cx="31" cy="44" rx="3.2" ry="2.6" fill="#F3A98E"/><ellipse cx="69" cy="44" rx="3.2" ry="2.6" fill="#F3A98E"/>`),
-    // snout
-    e(m, 50, 76, 17, 12, P.furDark),
+    p(m, 'M17 103 C15 86 27 74 50 74 C73 74 85 86 83 103 C82 113 70 117 50 117 C30 117 18 113 17 103Z', C.furD),
+    det(m, `<path d="M24 104 C24 92 34 84 50 84 C66 84 76 92 76 104 C70 110 30 110 24 104Z" fill="${C.fur}" opacity=".55"/>
+      <path d="M20 108 C30 116 70 116 80 108 C78 114 68 117 50 117 C32 117 22 114 20 108Z" fill="${C.deep}" opacity=".35"/>`),
+    e(m, 33, 113, 8, 4.2, C.deep), e(m, 67, 113, 8, 4.2, C.deep),
+    det(m, `<path d="M30 112.5v2.5M34 112.5v2.5M64 112.5v2.5M68 112.5v2.5" stroke="#4E2B16" stroke-width="1" stroke-linecap="round" opacity=".6"/>`),
+    e(m, 31, 38, 5, 4.4, C.furD), e(m, 69, 38, 5, 4.4, C.furD),
+    det(m, `<ellipse cx="31.4" cy="38.8" rx="2.4" ry="2" fill="${C.ear}"/><ellipse cx="68.6" cy="38.8" rx="2.4" ry="2" fill="${C.ear}"/>`),
+    p(m, 'M26 50 C26 39 36 35 50 35 C64 35 74 39 74 50 L78 72 C80 87 68 95 50 95 C32 95 20 87 22 72 Z', C.fur),
     det(m, `
-      <ellipse cx="50" cy="71" rx="8" ry="4.5" fill="${P.furDeep}"/>
-      <ellipse cx="46" cy="70.5" rx="1.6" ry="2" fill="${P.ink}"/><ellipse cx="54" cy="70.5" rx="1.6" ry="2" fill="${P.ink}"/>
-      <path d="M45 80 Q50 84 55 80" fill="none" stroke="${P.ink}" stroke-width="2.4" stroke-linecap="round"/>
-      <circle cx="37" cy="60" r="5.2" fill="${P.ink}"/><circle cx="63" cy="60" r="5.2" fill="${P.ink}"/>
-      <circle cx="38.6" cy="58.3" r="1.7" fill="#fff"/><circle cx="64.6" cy="58.3" r="1.7" fill="#fff"/>
-      <ellipse cx="29" cy="70" rx="5" ry="3.2" fill="${P.blush}" opacity=".8"/><ellipse cx="71" cy="70" rx="5" ry="3.2" fill="${P.blush}" opacity=".8"/>
-      <ellipse cx="38" cy="103" rx="6" ry="3.5" fill="${P.furDeep}"/><ellipse cx="62" cy="103" rx="6" ry="3.5" fill="${P.furDeep}"/>`),
+      <path d="M21.6 72 C21 86 32 94 50 94 C68 94 79 86 78.4 72 C75 84 66 89 50 89 C34 89 25 84 21.6 72Z" fill="${C.furD}" opacity=".6"/>
+      <ellipse cx="50" cy="42" rx="17" ry="5.5" fill="${C.furH}" opacity=".55"/>
+      <path d="M45 35.5 q2 -4 4 -.5 q2 -4.5 4 0" fill="none" stroke="${C.furD}" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M26 58 l-3 1.5 M26 62 l-3.5 .6 M74 58 l3 1.5 M74 62 l3.5 .6" stroke="${C.furD}" stroke-width="1.2" stroke-linecap="round" opacity=".7"/>
+      <path d="M29 69 C29 60 38 57 50 57 C62 57 71 60 71 69 C71.5 82 62 89 50 89 C38 89 28.5 82 29 69Z" fill="${C.muz}"/>
+      <path d="M31 75 C33 83 40 87 50 87 C60 87 67 83 69 75 C64 81 58 83 50 83 C42 83 36 81 31 75Z" fill="${C.furD}" opacity=".35"/>
+      <path d="M38 61.5 C42 59.5 58 59.5 62 61.5" stroke="${C.furH}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".8"/>
+      <path d="M40 67.5 C42 62.5 58 62.5 60 67.5 C55 69.5 45 69.5 40 67.5Z" fill="${C.furD}" opacity=".45"/>
+      <ellipse cx="46.4" cy="66" rx="1.3" ry="2.3" fill="${C.nose}" transform="rotate(35 46.4 66)"/><ellipse cx="53.6" cy="66" rx="1.3" ry="2.3" fill="${C.nose}" transform="rotate(-35 53.6 66)"/>
+      <path d="M50 68.5 v5.7 M44.5 75 q2.8 3 5.5 -.6 q2.7 3.6 5.5 .6" stroke="${C.ink}" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <ellipse cx="36.8" cy="53.8" rx="4.1" ry="3.9" fill="${C.ink}"/>
+      <ellipse cx="63.2" cy="53.8" rx="4.1" ry="3.9" fill="${C.ink}"/>
+      <circle cx="38.3" cy="52.4" r="1.5" fill="#fff"/><circle cx="64.7" cy="52.4" r="1.5" fill="#fff"/><circle cx="35.2" cy="55.6" r=".7" fill="#fff" opacity=".85"/><circle cx="61.6" cy="55.6" r=".7" fill="#fff" opacity=".85"/>
+      ${blushMarks(27, 70)}${blushMarks(73, 70)}`),
   ].join('');
 }
 
-// ---------- friends: black cat, bear, legendary capydindon (same head frame as the capybara)
-const CAT = { fur: '#2E2A3A', light: '#4A4459', eye: '#F7D046' };
-function catBody(m: Mode) {
+/** B · "Profil": side-view capybara facing left — big brick head, tall flat blunt snout, eye and ear set high,
+ *  loaf body on four short legs. Drawn in a 0-100 concept grid, fitted by the wrapper transform. */
+function capyProfileRaw(m: Mode) {
   return [
-    p(m, 'M70 104 C92 106 98 84 88 72 C85 68 80 70 82 75 C88 86 84 96 68 96Z', CAT.fur), // tail
-    e(m, 50, 97, 26, 16, CAT.fur),
-    p(m, 'M24 62 L25 31 L47 45Z', CAT.fur), p(m, 'M76 62 L75 31 L53 45Z', CAT.fur), // pointy ears
-    p(m, 'M22 68 C22 50 34 42 50 42 C66 42 78 50 78 68 C78 84 66 92 50 92 C34 92 22 84 22 68Z', CAT.fur),
-    det(m, `<path d="M28 52 L28.5 38 L40 46Z" fill="#F49AB8"/><path d="M72 52 L71.5 38 L60 46Z" fill="#F49AB8"/>
-      <ellipse cx="37" cy="63" rx="7.5" ry="8.5" fill="${CAT.eye}"/><ellipse cx="63" cy="63" rx="7.5" ry="8.5" fill="${CAT.eye}"/>
-      <ellipse cx="37" cy="64" rx="2.8" ry="6.5" fill="#15121C"/><ellipse cx="63" cy="64" rx="2.8" ry="6.5" fill="#15121C"/>
-      <circle cx="39.5" cy="59.5" r="2" fill="#fff"/><circle cx="65.5" cy="59.5" r="2" fill="#fff"/>
-      <path d="M47 73 L53 73 L50 77Z" fill="#F49AB8"/>
-      <path d="M44 79 Q47 82 50 79 Q53 82 56 79" fill="none" stroke="#F3E9FF" stroke-width="2" stroke-linecap="round"/>
-      <path d="M30 74 L16 72 M30 78 L17 80 M70 74 L84 72 M70 78 L83 80" stroke="#F3E9FF" stroke-width="1.6" stroke-linecap="round" opacity=".85"/>
-      <ellipse cx="28" cy="72" rx="4.5" ry="2.8" fill="${P.blush}" opacity=".7"/><ellipse cx="72" cy="72" rx="4.5" ry="2.8" fill="${P.blush}" opacity=".7"/>
-      <ellipse cx="39" cy="104" rx="6" ry="3.5" fill="${CAT.light}"/><ellipse cx="61" cy="104" rx="6" ry="3.5" fill="${CAT.light}"/>`),
+    // far legs (darker, behind)
+    p(m, 'M37 72 L37.4 84.5 C37.4 86.2 39 86.8 41.6 86.8 C44.2 86.8 45.6 86.2 45.6 84.5 L45.4 72Z', C.deep),
+    p(m, 'M67 72 L67.4 84.5 C67.4 86.2 69 86.8 71.6 86.8 C74.2 86.8 75.6 86.2 75.6 84.5 L75.4 72Z', C.deep),
+    // loaf body
+    p(m, 'M33 57 C31 46 44 38.5 64 38.5 C81 38.5 90 49 89.5 62 C89 73 83 78.5 71 79 L45 79 C37 78.5 34 69 33 57Z', C.furD),
+    det(m, `
+      <path d="M62 41.6 C73 40.6 82 44 85.6 49" stroke="${C.furL}" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".9"/>
+      <path d="M86 52 C90 62 88 74 79 77.6 C70 80 54 79.6 44 79 C56 77 72 76.6 79 72 C85 68 87 60 86 52Z" fill="${C.deep}" opacity=".45"/>
+      <path d="M36 60 C46 63.5 58 63 65 57.5 L65 63 C57 67 45 67 37 64Z" fill="${C.deep}" opacity=".35"/>
+      <path d="M71 55 q3 -1.6 6 .2 M66 63 q3 -1.6 6 .2 M76 64 q3 -1.6 6 .2" stroke="${C.deep}" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".5"/>`),
+    // near legs
+    p(m, 'M46.5 73 L47 85 C47 86.8 48.7 87.4 51.4 87.4 C54.1 87.4 55.6 86.8 55.6 85 L55.4 73Z', C.furD),
+    p(m, 'M76.5 71 L77 85 C77 86.8 78.7 87.4 81.4 87.4 C84.1 87.4 85.6 86.8 85.6 85 L85.2 70Z', C.furD),
+    det(m, `<path d="M47 83.4 C49.6 84.4 53 84.4 55.6 83.4 L55.6 85 C55.6 86.8 54.1 87.4 51.4 87.4 C48.7 87.4 47 86.8 47 85Z" fill="${C.deep}"/>
+      <path d="M77 83.4 C79.6 84.4 83 84.4 85.6 83.4 L85.6 85 C85.6 86.8 84.1 87.4 81.4 87.4 C78.7 87.4 77 86.8 77 85Z" fill="${C.deep}"/>
+      <path d="M38 83.2 C40 84 43.6 84 45.6 83.2" stroke="#4E2B16" stroke-width="1.6" fill="none" opacity=".6"/><path d="M68 83.2 C70 84 73.6 84 75.6 83.2" stroke="#4E2B16" stroke-width="1.6" fill="none" opacity=".6"/>`),
+    // ear (back of the head, high)
+    e(m, 56.6, 23.4, 3.9, 3.7, C.furD),
+    det(m, `<ellipse cx="56.4" cy="23.8" rx="2.1" ry="1.9" fill="${C.ear}"/>`),
+    // head: wide rounded brick, flat front
+    p(m, 'M61 27 C54 21.6 36 21 23 24.4 C15.6 26.4 12 30.6 12 37 L12.2 50.5 C12.3 55.6 15.2 58.2 20.4 58.6 C34 59.8 51 60.4 59.6 56.4 C67.4 52.4 68.6 33.4 61 27Z', C.fur),
+    det(m, `
+      <path d="M13 52 C14 56 16.6 58 20.4 58.4 C34 59.6 51 60.2 59.6 56.2 C63.4 54.2 65.6 49.4 66.4 43.6 C63 51 55 54 44 54.6 C32 55.2 20 54.6 13 52Z" fill="${C.furD}" opacity=".55"/>
+      <path d="M22 27.4 C33 24.2 47 23.8 56 26.2" stroke="${C.furH}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".75"/>
+      <path d="M12.2 37 C12.4 31 16 28.6 21.2 29 C24.6 29.6 26 33 26 38 L26 50 C26 54.4 24 57.4 20.4 58.4 C15.2 58 12.3 55.6 12.2 50.5Z" fill="${C.furD}" opacity=".38"/>
+      <path d="M13 34.6 C13.6 30.4 17.6 29 21.6 29.6 C25 30.4 25.6 34 24.6 36.8 C23.6 39.4 19.4 40.4 15.6 39.8 C13.6 39.4 12.8 37.6 13 34.6Z" fill="#86532F"/>
+      <ellipse cx="15.4" cy="35.6" rx="1.2" ry="2.1" fill="${C.nose}" transform="rotate(25 15.4 35.6)"/><ellipse cx="20.6" cy="35" rx="1.7" ry="2.4" fill="${C.nose}" transform="rotate(-20 20.6 35)"/>
+      <ellipse cx="17.4" cy="31.6" rx="2.6" ry=".9" fill="#fff" opacity=".22"/>
+      <path d="M15.4 40.6 L15.4 47.6 Q15.8 52.6 21.2 52.8" stroke="${C.ink}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <ellipse cx="44" cy="34.6" rx="3.7" ry="3.6" fill="${C.ink}"/>
+      <circle cx="45.4" cy="33.3" r="1.35" fill="#fff"/><circle cx="42.5" cy="36.3" r=".6" fill="#fff" opacity=".85"/>
+      ${blushMarks(42.6, 43.4, 5, 3.1)}
+      <path d="M53.4 39.6 l3.6 -.9 M54 44 l3.8 .2 M53.6 48.2 l3.6 1.2" stroke="${C.furD}" stroke-width="1.15" stroke-linecap="round" opacity=".8"/>`),
   ].join('');
 }
-const BEAR = { fur: '#8B5A3C', deep: '#6B4029', muzzle: '#F2D6B0' };
+const PROF_T = 'translate(-10 17) scale(1.15)';
+const capyProfile = (m: Mode) => `<g transform="${PROF_T}">${capyProfileRaw(m)}</g>`;
+
+// ---------- friends: black cat, bear, legendary capydindon — same layered sticker style as the mascot
+const CAT = { fur: '#2E2A3A', light: '#4A4459', hi: '#5D5672', eye: '#F7D046' };
+function catBody(m: Mode) {
+  return [
+    p(m, 'M68 106 C90 108 98 86 89 73 C86 69 80.6 70.6 82.4 75.6 C88 86 84 96 67 97Z', CAT.fur),
+    p(m, 'M19 104 C17 88 29 77 50 77 C71 77 83 88 81 104 C80 113 69 117 50 117 C31 117 20 113 19 104Z', CAT.fur),
+    det(m, `<path d="M28 104 C28 94 37 87 50 87 C63 87 72 94 72 104 C66 110 34 110 28 104Z" fill="${CAT.light}" opacity=".7"/>`),
+    e(m, 35, 113, 7.5, 4, CAT.light), e(m, 65, 113, 7.5, 4, CAT.light),
+    p(m, 'M23 60 L24.5 30 C25 28 27 27.6 28.6 29 L47 43Z', CAT.fur), p(m, 'M77 60 L75.5 30 C75 28 73 27.6 71.4 29 L53 43Z', CAT.fur),
+    p(m, 'M21 66 C21 48 33 40 50 40 C67 40 79 48 79 66 C79 84 67 93 50 93 C33 93 21 84 21 66Z', CAT.fur),
+    det(m, `<path d="M28.4 50 L28.8 36 L39.6 44Z" fill="#F49AB8"/><path d="M71.6 50 L71.2 36 L60.4 44Z" fill="#F49AB8"/>
+      <path d="M21.6 72 C23 86 34 93 50 93 C66 93 77 86 78.4 72 C74 84 64 88 50 88 C36 88 26 84 21.6 72Z" fill="#1F1C28" opacity=".8"/>
+      <ellipse cx="50" cy="46" rx="16" ry="4.6" fill="${CAT.hi}" opacity=".7"/>
+      <ellipse cx="37" cy="62" rx="7.4" ry="8.4" fill="${CAT.eye}"/><ellipse cx="63" cy="62" rx="7.4" ry="8.4" fill="${CAT.eye}"/>
+      <path d="M29.8 64 C31 69.6 34 70.6 37 70.6 C40 70.6 43 69.6 44.2 64 C42 67 32 67 29.8 64Z" fill="#E0A815"/><path d="M55.8 64 C57 69.6 60 70.6 63 70.6 C66 70.6 69 69.6 70.2 64 C68 67 58 67 55.8 64Z" fill="#E0A815"/>
+      <ellipse cx="37" cy="63" rx="2.8" ry="6.4" fill="#15121C"/><ellipse cx="63" cy="63" rx="2.8" ry="6.4" fill="#15121C"/>
+      <circle cx="39.4" cy="58.6" r="2" fill="#fff"/><circle cx="65.4" cy="58.6" r="2" fill="#fff"/><circle cx="35.4" cy="66.4" r=".9" fill="#fff" opacity=".8"/><circle cx="61.4" cy="66.4" r=".9" fill="#fff" opacity=".8"/>
+      <path d="M47 73 C47 71.6 53 71.6 53 73 L50 76.4Z" fill="#F49AB8"/>
+      <path d="M50 76.4 v2 M44.6 79 q2.7 2.8 5.4 -.6 q2.7 3.4 5.4 .6" fill="none" stroke="#F3E9FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M30 73 L16 71 M30 77 L17 79 M70 73 L84 71 M70 77 L83 79" stroke="#F3E9FF" stroke-width="1.4" stroke-linecap="round" opacity=".8"/>
+      ${blushMarks(28.6, 71.6, 4.6, 2.8)}${blushMarks(71.4, 71.6, 4.6, 2.8)}`),
+  ].join('');
+}
+const BEAR = { fur: '#8B5A3C', deep: '#6B4029', hi: '#A8754F', muzzle: '#F2D6B0' };
 function bearBody(m: Mode) {
   return [
-    e(m, 50, 97, 30, 17, BEAR.deep),
-    c(m, 28, 45, 10, BEAR.fur), c(m, 72, 45, 10, BEAR.fur), // big round ears
-    p(m, 'M21 69 C21 50 33 41 50 41 C67 41 79 50 79 69 C79 85 67 93 50 93 C33 93 21 85 21 69Z', BEAR.fur),
-    e(m, 50, 76, 14, 11, BEAR.muzzle),
-    det(m, `<circle cx="28" cy="45" r="5" fill="${BEAR.muzzle}"/><circle cx="72" cy="45" r="5" fill="${BEAR.muzzle}"/>
-      <ellipse cx="50" cy="71" rx="6.5" ry="4.6" fill="#2A1A10"/><ellipse cx="48" cy="69.6" rx="2" ry="1.2" fill="#fff" opacity=".7"/>
-      <path d="M50 75 V79 M44 80 Q50 85 56 80" fill="none" stroke="#2A1A10" stroke-width="2.3" stroke-linecap="round"/>
-      <circle cx="37" cy="60" r="4.6" fill="${P.ink}"/><circle cx="63" cy="60" r="4.6" fill="${P.ink}"/>
-      <circle cx="38.4" cy="58.5" r="1.5" fill="#fff"/><circle cx="64.4" cy="58.5" r="1.5" fill="#fff"/>
-      <ellipse cx="29" cy="71" rx="5" ry="3.2" fill="${P.blush}" opacity=".75"/><ellipse cx="71" cy="71" rx="5" ry="3.2" fill="${P.blush}" opacity=".75"/>
-      <ellipse cx="50" cy="99" rx="14" ry="8" fill="#A9754F"/>
-      <ellipse cx="37" cy="104" rx="6.5" ry="3.8" fill="#5A3420"/><ellipse cx="63" cy="104" rx="6.5" ry="3.8" fill="#5A3420"/>`),
+    p(m, 'M17 103 C15 86 27 75 50 75 C73 75 85 86 83 103 C82 113 70 117 50 117 C30 117 18 113 17 103Z', BEAR.deep),
+    det(m, `<ellipse cx="50" cy="99" rx="17" ry="11" fill="${BEAR.hi}"/>`),
+    e(m, 33, 113, 8, 4.2, '#4E2D1B'), e(m, 67, 113, 8, 4.2, '#4E2D1B'),
+    c(m, 28, 43, 10, BEAR.fur), c(m, 72, 43, 10, BEAR.fur),
+    p(m, 'M21 67 C21 48 33 39 50 39 C67 39 79 48 79 67 C79 84 67 93 50 93 C33 93 21 84 21 67Z', BEAR.fur),
+    det(m, `<circle cx="28" cy="43" r="5" fill="${BEAR.muzzle}"/><circle cx="72" cy="43" r="5" fill="${BEAR.muzzle}"/>
+      <path d="M21.6 72 C23 86 34 93 50 93 C66 93 77 86 78.4 72 C74 84 64 88 50 88 C36 88 26 84 21.6 72Z" fill="${BEAR.deep}" opacity=".6"/>
+      <ellipse cx="50" cy="45.6" rx="16" ry="4.8" fill="${BEAR.hi}" opacity=".75"/>
+      <ellipse cx="50" cy="75" rx="14" ry="11" fill="${BEAR.muzzle}"/><path d="M37 78 C39 84 44 86 50 86 C56 86 61 84 63 78 C59 82 41 82 37 78Z" fill="#D9B48A"/>
+      <ellipse cx="50" cy="70" rx="6.2" ry="4.4" fill="#2A1A10"/><ellipse cx="48" cy="68.6" rx="2" ry="1.1" fill="#fff" opacity=".7"/>
+      <path d="M50 74 V77.6 M44.6 78.6 q2.7 3 5.4 -.6 q2.7 3.6 5.4 .6" fill="none" stroke="#2A1A10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <ellipse cx="37" cy="59" rx="4.2" ry="4.8" fill="${C.ink}"/><ellipse cx="63" cy="59" rx="4.2" ry="4.8" fill="${C.ink}"/>
+      <circle cx="38.4" cy="57.4" r="1.5" fill="#fff"/><circle cx="64.4" cy="57.4" r="1.5" fill="#fff"/>
+      ${blushMarks(28.6, 70)}${blushMarks(71.4, 70)}`),
   ].join('');
 }
 const FAN = ['#B5532A', '#F5B82E', '#E8692A', '#7A4E2E', '#EF4B5F', '#F5B82E', '#B5532A', '#E8692A', '#7A4E2E'];
 function dindonBody(m: Mode) {
   let fan = '';
-  for (let i = -4; i <= 4; i++) { const a = (i * 21 * Math.PI) / 180; const cx = 50 + Math.sin(a) * 33, cy = 74 - Math.cos(a) * 33;
-    fan += e(m, cx, cy, 9, 21, FAN[i + 4], `transform="rotate(${i * 21} ${cx} ${cy})"`) + det(m, `<circle cx="${50 + Math.sin(a) * 45}" cy="${74 - Math.cos(a) * 45}" r="3" fill="#FFF3C4"/><circle cx="${50 + Math.sin(a) * 45}" cy="${74 - Math.cos(a) * 45}" r="1.5" fill="#2FA4A9"/>`); }
-  return fan + capyBody(m) +
-    p(m, 'M40 44 C38 34 44 32 46 38 C46 28 54 28 54 38 C56 32 62 34 60 44Z', '#E8344E') + // comb
-    p(m, 'M55 76 C60 80 60 92 55 93 C51 92 51 84 53 78Z', '#E8344E') + // wattle
-    det(m, `<path d="M44 72 L50 79 L56 72Z" fill="${P.gold}" stroke="#C9851A" stroke-width="1.2" stroke-linejoin="round"/>`); // beak
+  for (let i = -4; i <= 4; i++) { const a = (i * 21 * Math.PI) / 180; const cx = 50 + Math.sin(a) * 33, cy = 76 - Math.cos(a) * 33;
+    fan += e(m, cx, cy, 9, 21, FAN[i + 4], `transform="rotate(${i * 21} ${cx} ${cy})"`) + det(m, `<ellipse cx="${cx}" cy="${cy}" rx="4" ry="15" fill="#fff" opacity=".14" transform="rotate(${i * 21} ${cx} ${cy})"/><circle cx="${50 + Math.sin(a) * 45}" cy="${76 - Math.cos(a) * 45}" r="3" fill="#FFF3C4"/><circle cx="${50 + Math.sin(a) * 45}" cy="${76 - Math.cos(a) * 45}" r="1.5" fill="#2FA4A9"/>`); }
+  return fan + capyFront(m) +
+    p(m, 'M41 39 C39 29 45 27 47 33 C47 23 55 23 55 33 C57 27 63 29 61 39Z', '#E8344E') + // comb
+    p(m, 'M55.6 74 C60.6 78 60.6 90 55.6 91 C51.6 90 51.6 82 53.6 76Z', '#E8344E') + // wattle
+    det(m, `<path d="M44.4 69 L50 76.4 L55.6 69 Q50 66.6 44.4 69Z" fill="${P.gold}" stroke="#C9851A" stroke-width="1.2" stroke-linejoin="round"/>`);
 }
 export const FRIENDS = ['chat', 'ours', 'capydindon'] as const;
-const BODY: Record<string, (m: Mode) => string> = { capy: capyBody, chat: catBody, ours: bearBody, capydindon: dindonBody };
+/** Each animal: drawing + where accessories sit (acc art is designed around (50,30), hat brims ~y40) + eye line for glasses. */
+interface Spec { draw: (m: Mode) => string; at: [number, number, number]; eyes: [number, number][] }
+const BODY: Record<string, Spec> = {
+  capy: { draw: capyFront, at: [50, 25, 1.3], eyes: [[36.5, 54], [63.5, 54]] },
+  capyP: { draw: capyProfile, at: [37, 31.6, 1.12], eyes: [[40.6, 56.6]] },
+  chat: { draw: catBody, at: [50, 30, 1.3], eyes: [[37, 62], [63, 62]] },
+  ours: { draw: bearBody, at: [50, 28, 1.3], eyes: [[37, 59], [63, 59]] },
+  capydindon: { draw: dindonBody, at: [50, 22, 1.3], eyes: [[36.5, 54], [63.5, 54]] },
+};
 /** Tile themes: which animal plays each family. 'menagerie' = one animal per suit. */
 export type Theme = 'capy' | 'menagerie' | 'chat' | 'ours';
 const THEME_SUIT: Record<Theme, Record<Suit | 'honor', string>> = {
@@ -126,14 +194,14 @@ const THEME_SUIT: Record<Theme, Record<Suit | 'honor', string>> = {
 
 // Accessories sit on top of head (~y 40)
 const ACC: Record<string, (m: Mode) => string> = {
-  agrume: (m) => c(m, 50, 31, 12, P.orange) + p(m, 'M50 19 C56 12 63 14 64 18 C58 22 53 21 50 19Z', P.green) + det(m, `<circle cx="45" cy="27" r="3" fill="#FFC08F"/><circle cx="50" cy="20.5" r="1.6" fill="#B65A1A"/>`),
+  agrume: (m) => e(m, 50, 31, 10.8, 10, '#F7A21B') + det(m, `<ellipse cx="53.5" cy="34.5" rx="7.5" ry="5.5" fill="#E8860C" opacity=".55"/><ellipse cx="46" cy="27.2" rx="3.2" ry="2.2" fill="#FFE2A3" transform="rotate(-25 46 27.2)"/><circle cx="52" cy="30" r=".8" fill="#E8860C"/><circle cx="47" cy="34" r=".8" fill="#E8860C"/><circle cx="55" cy="35.5" r=".8" fill="#D07006"/>`) + p(m, 'M50 22 C52 15 59 14 62 17 C59 21 54 22 50 22Z', '#5FAE57') + det(m, `<path d="M51.5 20.8 Q56 17.5 60.5 17" stroke="#3E8A3A" stroke-width=".9" fill="none" stroke-linecap="round"/><path d="M50 22.5 l-.6 -2.6" stroke="#5B3A1E" stroke-width="1.4" stroke-linecap="round"/>`),
   fraise: (m) => p(m, 'M37 24 C37 18 63 18 63 24 C63 34 55 44 50 44 C45 44 37 34 37 24Z', P.red) + p(m, 'M39 22 L44 15 L50 20 L56 15 L61 22 Z', P.green) + det(m, ['42,28', '50,27', '58,28', '46,35', '54,35', '50,40'].map((q) => `<ellipse cx="${q.split(',')[0]}" cy="${q.split(',')[1]}" rx="1.2" ry="1.8" fill="#FFE08A"/>`).join('')),
   feuille: (m) => p(m, 'M30 36 C34 16 62 12 72 20 C68 36 46 44 30 36Z', P.green) + det(m, `<path d="M33 35 C45 30 58 24 69 21" fill="none" stroke="#2A7F4B" stroke-width="2.2" stroke-linecap="round"/>`),
   couronne: (m) => p(m, 'M33 40 L31 20 L41 29 L50 15 L59 29 L69 20 L67 40 Z', P.gold) + det(m, `<circle cx="50" cy="33" r="3.2" fill="${P.red}"/><circle cx="40" cy="35" r="2.2" fill="${P.teal}"/><circle cx="60" cy="35" r="2.2" fill="${P.teal}"/>`),
   paille: (m) => e(m, 50, 38, 32, 7, '#F2D27A') + p(m, 'M35 38 C35 20 65 20 65 38Z', '#F2D27A') + det(m, `<rect x="35" y="31" width="30" height="5" rx="2" fill="${P.red}"/>`),
   serviette: (m) => p(m, 'M30 38 C30 26 70 26 70 38 L68 42 L32 42Z', '#FFFFFF') + det(m, `<path d="M30 38 C30 26 70 26 70 38 L68 42 L32 42Z" fill="#fff" stroke="${P.sky}" stroke-width="2"/><path d="M38 34 H62" stroke="${P.sky}" stroke-width="2.5" stroke-linecap="round"/>`),
   bonnet: (m) => p(m, 'M30 42 C30 18 70 18 70 42Z', '#5B8DEF') + c(m, 50, 18, 6, '#fff') + det(m, `<rect x="28" y="37" width="44" height="8" rx="4" fill="#fff"/>`),
-  lunettes: (m) => det(m, `<rect x="27" y="53" width="20" height="14" rx="6" fill="#2B2B3A"/><rect x="53" y="53" width="20" height="14" rx="6" fill="#2B2B3A"/><path d="M47 58 H53" stroke="#2B2B3A" stroke-width="3"/><path d="M31 57 l5 -2" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/><path d="M57 57 l5 -2" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/>`) + c(m, 50, 32, 0.1, '#fff'),
+  lunettes: () => '', // drawn by glasses() on each animal's eyes
   noeud: (m) => p(m, 'M50 34 L33 24 C29 30 29 38 33 44 Z', '#FF77B0') + p(m, 'M50 34 L67 24 C71 30 71 38 67 44 Z', '#FF77B0') + c(m, 50, 34, 5.5, '#FF4F97'),
   canard: (m) => e(m, 50, 33, 13, 8, '#FFD93B') + c(m, 56, 22, 8, '#FFD93B') + p(m, 'M63 22 L71 24 L63 27Z', P.orange) + det(m, `<circle cx="58" cy="20" r="1.8" fill="${P.ink}"/>`),
   printemps: (m) => flower(m, 50, 28, 11, '#FFB7CF', '#FFE3EC'),
@@ -181,24 +249,43 @@ function pips(suit: Suit, n: number) {
   return (['s', 'o', 'c'] as Mode[]).map((m) => `<g ${m === 's' ? 'transform="translate(1 1.5)"' : ''}>${pts.map(([x, y]) => pip(m, suit, x, y)).join('')}</g>`).join('');
 }
 
-export function capyLayers(accId: string, body = true, animal = 'capy') {
+function glasses(m: Mode, eyes: [number, number][]) {
+  if (m !== 'c') return '';
+  const lens = ([x, y]: [number, number]) => `<rect x="${x - 9}" y="${y - 6.5}" width="18" height="13" rx="6" fill="#2B2B3A"/><path d="M${x - 5} ${y - 2.5} l5 -2" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/>`;
+  if (eyes.length === 2) return lens(eyes[0]) + lens(eyes[1]) + `<path d="M${eyes[0][0] + 9} ${eyes[0][1] - 1} H${eyes[1][0] - 9}" stroke="#2B2B3A" stroke-width="3"/>`;
+  const [x, y] = eyes[0]; return `<path d="M${x + 8} ${y - 2} L${x + 21} ${y - 6}" stroke="#2B2B3A" stroke-width="2.6" stroke-linecap="round"/>` + lens(eyes[0]);
+}
+/** Layered sticker art: shadow, white outline, colour. `flip` mirrors it (profile capybaras face right on tiles). */
+export function capyLayers(accId: string, body = true, animal = 'capy', flip = false) {
   if (BODY[accId] && accId !== 'capy') { animal = accId; accId = ''; } // a friend on its own
-  const acc = ACC[accId]; const B = BODY[animal] ?? capyBody;
-  const layer = (m: Mode) => `${body ? `<g transform="translate(0 6)">${B(m)}</g>` : ''}${acc ? `<g transform="translate(50 36) scale(1.35) translate(-50 -30)">${acc(m)}</g>` : ''}`;
-  return `<g transform="translate(2.5 3.5)">${layer('s')}</g>${layer('o')}${layer('c')}`;
+  const acc = ACC[accId]; const B = BODY[animal] ?? BODY.capy; const [ax, ay, as] = B.at;
+  const layer = (m: Mode) => `${body ? B.draw(m) : ''}${accId === 'lunettes' ? glasses(m, B.eyes) : acc ? `<g transform="translate(${ax} ${ay}) scale(${as}) translate(-50 -30)">${acc(m)}</g>` : ''}`;
+  const inner = `<g transform="translate(2.2 3.2)">${layer('s')}</g>${layer('o')}${layer('c')}`;
+  return flip ? `<g transform="translate(100 0) scale(-1 1)">${inner}</g>` : inner;
+}
+
+/** Pose of a tile kind: front (A) or profile (B). Alternates by rank and family so the board feels varied;
+ *  both tiles of a pair are the same kind, so they always share a pose. */
+export function poseOf(id: string): 'capy' | 'capyP' {
+  const k = KIND_BY_ID.get(id)!;
+  if (k.suit) return (k.rank! + SUITS.indexOf(k.suit)) % 2 ? 'capyP' : 'capy';
+  if (k.group === 'saison') return 'capy';
+  if (k.group === 'fleur') return 'capyP';
+  return HONORS.indexOf(k.id as typeof HONORS[number]) % 2 ? 'capyP' : 'capy';
 }
 
 /** Inner art for a tile face, viewBox 0 0 100 130 */
 export function tileArt(id: string, theme: Theme = 'capy'): string {
   const k = KIND_BY_ID.get(id)!; const T = THEME_SUIT[theme];
   if (k.legend) return `<g transform="translate(6 10) scale(.88)">${capyLayers('capydindon')}</g>${badge(k)}`;
-  if (k.suit) return `<g transform="translate(13 1) scale(.74)">${capyLayers(k.suit, true, T[k.suit])}</g>${pips(k.suit, k.rank!)}${badge(k)}`;
-  return `<g transform="translate(1 -2) scale(.98)">${capyLayers(k.id, true, T.honor)}</g>${badge(k)}`;
+  const animal = k.suit ? T[k.suit] : T.honor; const prof = animal === 'capy' && poseOf(id) === 'capyP'; const an = prof ? 'capyP' : animal;
+  if (k.suit) return `<g transform="${prof ? 'translate(14 1) scale(.72)' : 'translate(13 1) scale(.74)'}">${capyLayers(k.suit, true, an, prof)}</g>${pips(k.suit, k.rank!)}${badge(k)}`;
+  return `<g transform="${prof ? 'translate(2 6) scale(.98)' : 'translate(1 -2) scale(.98)'}">${capyLayers(k.id, true, an, prof)}</g>${badge(k)}`;
 }
 
 /** Standalone capybara illustration (viewBox 0 0 100 120) */
-export function capySvg(accId: string, extra = '') {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -4 112 124">${extra}${capyLayers(accId)}</svg>`;
+export function capySvg(accId: string, extra = '', animal = 'capy') {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -4 112 126">${extra}${capyLayers(accId, true, animal)}</svg>`;
 }
 
 /** Face plate: rounded cream face, used under the art */
