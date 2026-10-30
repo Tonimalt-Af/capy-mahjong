@@ -1,2 +1,72 @@
-{"name":"Mahjong Capybaras","short_name":"Capybaras","description":"Le mahjong solitaire le plus doux du web, avec des capybaras.","lang":"fr","start_url":"./","scope":"./","display":"fullscreen","orientation":"landscape","background_color":"#BFE6D9","theme_color":"#7FC8B4",
-"icons":[{"src":"icons/icon-192.png","sizes":"192x192","type":"image/png"},{"src":"icons/icon-512.png","sizes":"512x512","type":"image/png"},{"src":"icons/maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}
+{
+ "id": "./",
+ "name": "Mahjong Capybaras",
+ "short_name": "Capybaras",
+ "description": "Un mahjong solitaire avec des capybaras.",
+ "lang": "fr",
+ "dir": "ltr",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "display_override": [
+  "fullscreen",
+  "standalone"
+ ],
+ "orientation": "landscape",
+ "background_color": "#BFE6D9",
+ "theme_color": "#7FC8B4",
+ "categories": [
+  "games",
+  "entertainment"
+ ],
+ "icons": [
+  {
+   "src": "icons/icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icons/icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icons/maskable-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ],
+ "screenshots": [
+  {
+   "src": "screenshots/jeu-onsen.webp",
+   "sizes": "1280x720",
+   "type": "image/webp",
+   "form_factor": "wide",
+   "label": "Partie en cours dans le monde Onsen, plateau en cœur"
+  },
+  {
+   "src": "screenshots/jeu-riviere.webp",
+   "sizes": "1280x720",
+   "type": "image/webp",
+   "form_factor": "wide",
+   "label": "Plateau du monde Rivière avec les tuiles capybaras"
+  },
+  {
+   "src": "screenshots/carte.webp",
+   "sizes": "1280x720",
+   "type": "image/webp",
+   "form_factor": "wide",
+   "label": "Carte des niveaux du monde Rivière"
+  },
+  {
+   "src": "screenshots/home.webp",
+   "sizes": "1280x720",
+   "type": "image/webp",
+   "form_factor": "wide",
+   "label": "Écran d'accueil au bord de l'onsen"
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tonimalt-af.github.io/capy-mahjong/sitemap.xml

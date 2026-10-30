@@ -203,3 +203,75 @@ test('undo budget: a ×4 combo earns one extra undo', async ({ page }) => {
   await seed(page); await page.goto('/?level=20'); await expect(page.locator('#g-undo-n')).toHaveText('3');
   await G(page).pairs(4); await expect(page.locator('#g-undo-n')).toHaveText('4'); await expect(page.locator('.pop', { hasText: '+1 annulation' })).toHaveCount(1);
 });
+
+const box = async (p: Page, sel: string) => (await p.locator(sel).boundingBox())!;
+const overlaps = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+test('game HUD music button: big enough, never over the board or other HUD items (844x390, 667x375, desktop)', async ({ page }) => {
+  await seed(page, { settings: { sfx: false, music: true, musicVol: 0.3, dim: true, vibrate: false } });
+  const sizes = test.info().project.name.startsWith('mobile') ? [{ width: 844, height: 390 }, { width: 667, height: 375 }] : [{ width: 1440, height: 900 }, { width: 1024, height: 640 }];
+  for (const vp of sizes) {
+    await page.setViewportSize(vp); await page.goto('/?level=6'); await G(page).pairs(4); await expect(page.locator('#g-combo')).toBeVisible();
+    await page.locator('#g-combo').evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+    const m = await box(page, '#g-music'); expect(m.width).toBeGreaterThanOrEqual(44); expect(m.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator('#g-music')).toBeInViewport({ ratio: 1 });
+    expect(overlaps(m, await box(page, '#stage'))).toBe(false);
+    for (const sel of ['#g-pause', '#g-lvl', '#g-combo', '#g-pairs', '#g-time', '#g-score', '.bar']) expect(overlaps(m, await box(page, sel)), sel).toBe(false);
+    await expect(page.locator('#g-score')).toBeInViewport({ ratio: 1 });
+  }
+});
+test('music button: one tap mutes / unmutes music, keeps the chosen volume, persists and stays in sync with settings', async ({ page }) => {
+  await seed(page, { settings: { sfx: false, music: true, musicVol: 0.3, dim: true, vibrate: false } }); await page.goto('/?level=0');
+  const b = page.locator('#g-music'); await expect(b).toHaveAttribute('aria-label', 'Couper la musique');
+  await tap(page, '#g-music'); await expect(page.locator('#g-music')).toHaveAttribute('aria-label', 'Remettre la musique'); await expect(page.locator('#g-music')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#toast')).toHaveText('Musique coupée');
+  let st = (await saveOf(page)).settings; expect(st.music).toBe(false); expect(st.musicVol).toBeCloseTo(0.3); expect(st.sfx).toBe(false);
+  await page.reload(); await expect(page.locator('#g-music')).toHaveAttribute('aria-label', 'Remettre la musique');
+  // settings toggle reflects it, and turning music on there updates the HUD button
+  await tap(page, '#g-pause'); await tap(page, '#p-settings'); await expect(page.locator('#s-music')).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('#v-music')).toHaveValue('30');
+  await tap(page, '#s-music'); await expect(page.locator('#g-music')).toHaveAttribute('aria-label', 'Couper la musique');
+  await tap(page, '#s-ok'); await tap(page, '#p-resume').catch(() => {});
+  await tap(page, '#g-music'); await tap(page, '#g-music'); await expect(page.locator('#toast')).toHaveText('Musique activée');
+  st = (await saveOf(page)).settings; expect(st.music).toBe(true); expect(st.musicVol).toBeCloseTo(0.3);
+});
+test('home has the music button in the top corner; slider at 0 shows muted and a tap brings music back audibly', async ({ page }) => {
+  await seed(page, { settings: { sfx: false, music: true, musicVol: 0, dim: true, vibrate: false } }); await page.goto('/');
+  const h = page.locator('#h-music'); await expect(h).toBeVisible(); await expect(h).toHaveAttribute('aria-label', 'Remettre la musique');
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || (a.effect?.getTiming().iterations ?? 1) === Infinity)); const hb = await box(page, '#h-music'); expect(await page.locator('#h-music').evaluate((e) => (e as HTMLElement).offsetWidth)).toBeGreaterThanOrEqual(44); for (const sel of ['#h-help', '#h-settings', '#h-wallet']) expect(overlaps(hb, await box(page, sel)), sel).toBe(false);
+  await tap(page, '#h-music'); await expect(page.locator('#h-music')).toHaveAttribute('aria-label', 'Couper la musique');
+  const st = (await saveOf(page)).settings; expect(st.music).toBe(true); expect(st.musicVol).toBeGreaterThan(0.3);
+});
+test('home: carrot pill and corner buttons never overlap the title or menu (iPhone Safari sizes, notch insets)', async ({ page }) => {
+  test.skip(!test.info().project.name.startsWith('mobile'), 'phone sizes');
+  await seed(page, { carrots: 85 });
+  const cdp = await page.context().newCDPSession(page);
+  for (const inset of [null, { top: 0, left: 59, right: 59, bottom: 21 }]) {
+    if (inset) await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: inset });
+    for (const vp of [{ width: 1024, height: 472 }, { width: 932, height: 430 }, { width: 844, height: 390 }, { width: 667, height: 375 }]) {
+      await page.setViewportSize(vp); await page.goto('/'); await expect(page.locator('.logo')).toBeVisible();
+      const [w, c, logo, menu] = await Promise.all(['#h-wallet', '.corner', '.logo', '.menu'].map((s) => box(page, s)));
+      for (const [a, b, n] of [[w, logo, 'pill/logo'], [w, menu, 'pill/menu'], [c, logo, 'corner/logo'], [c, menu, 'corner/menu']] as const) expect(overlaps(a, b), `${n} ${vp.width}x${vp.height} ${JSON.stringify(inset)}`).toBe(false);
+      expect(w.x).toBeGreaterThanOrEqual(inset ? inset.left : 0); expect(c.x + c.width).toBeLessThanOrEqual(vp.width - (inset ? inset.right : 0));
+      await expect(page.locator('#h-play')).toBeInViewport({ ratio: 1 }); await expect(page.locator('#h-coll')).toBeInViewport({ ratio: 1 });
+    }
+  }
+  await expect(page.locator('.home .tag')).toHaveCount(0);
+});
+test('PWA + SEO: standalone manifest with wide screenshots, French meta, JSON-LD, robots and sitemap', async ({ page }) => {
+  const m = await (await page.request.get('/manifest.webmanifest')).json();
+  expect(m.display).toBe('standalone'); expect(m.display_override).toContain('fullscreen'); expect(m.lang).toBe('fr'); expect(m.id).toBeTruthy(); expect(m.categories).toContain('games');
+  expect(m.description).not.toMatch(/doux du web|gratuit|sans pub/i);
+  expect(m.icons.some((i: { purpose: string }) => i.purpose === 'maskable')).toBe(true); expect(m.icons.some((i: { purpose: string }) => i.purpose === 'any')).toBe(true);
+  expect(m.screenshots.length).toBeGreaterThanOrEqual(3);
+  for (const s of [...m.screenshots, ...m.icons]) expect((await page.request.get('/' + s.src)).status(), s.src).toBe(200);
+  for (const s of m.screenshots) { expect(s.form_factor).toBe('wide'); expect(s.label.length).toBeGreaterThan(5); }
+  await page.goto('/');
+  const meta = (sel: string) => page.locator(sel).getAttribute('content');
+  expect(await meta('meta[name="description"]')).not.toMatch(/doux du web|gratuit|sans pub/i); expect(await meta('meta[property="og:description"]')).not.toMatch(/doux du web|gratuit|sans pub/i);
+  expect(await meta('meta[property="og:locale"]')).toBe('fr_FR'); expect(await meta('meta[property="og:site_name"]')).toBe('Mahjong Capybaras'); expect(await meta('meta[name="twitter:card"]')).toBe('summary_large_image');
+  expect(await meta('meta[name="apple-mobile-web-app-status-bar-style"]')).toBe('black-translucent'); expect(await meta('meta[name="viewport"]')).toContain('viewport-fit=cover');
+  expect(await page.locator('link[rel="canonical"]').getAttribute('href')).toBe('https://tonimalt-af.github.io/capy-mahjong/');
+  const ld = JSON.parse((await page.locator('script[type="application/ld+json"]').textContent())!); expect(ld['@type']).toBe('VideoGame'); expect(ld.isAccessibleForFree).toBe(true); expect(ld.inLanguage).toBe('fr');
+  expect(await page.title()).toContain('Mahjong Capybaras');
+  expect((await page.request.get('/robots.txt')).status()).toBe(200); expect(await (await page.request.get('/sitemap.xml')).text()).toContain('<loc>https://tonimalt-af.github.io/capy-mahjong/</loc>');
+});

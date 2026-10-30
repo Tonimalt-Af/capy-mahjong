@@ -390,3 +390,21 @@ button.wallet{border:0;font:inherit;color:inherit}
 @media (prefers-reduced-motion:reduce){#v-home::before,#v-home::after{transition:none}}
 /* Settings: two columns on wide screens so the volume sliders fit without scrolling */
 @media (min-width:760px) and (min-height:501px){.card.settings{max-width:min(820px,94vw)}.card.settings .sets{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:min(760px,88vw)}}
+/* Quick music mute: next to pause in the HUD, in the home corner */
+.hbtns{display:flex;gap:8px;align-items:center;flex:none}
+.mubtn .ic{transition:opacity .15s}.mubtn.off .ic{opacity:.6}
+@media (max-height:500px){
+  #v-game .hud .hbtns{flex-direction:column;align-items:flex-start;gap:8px}
+  #v-game .hud .iconbtn,.corner .iconbtn{width:44px;height:44px}
+}
+/* Home: the carrot pill and the corner buttons live in a reserved top band, so the title can never slide under them.
+   Safe areas (notch, black-translucent status bar) are already padded by .view: don't add env() again here
+   (that double inset pushed the pill onto the title on iPhone) */
+.home{--topband:66px;padding:var(--topband) 5vw 14px;align-items:safe center;overflow-y:auto;box-sizing:border-box;min-height:0}
+.home>.wallet{top:12px;left:14px;min-height:44px;box-sizing:border-box}.home>.corner{top:12px;right:14px}
+@media (max-height:500px){.home{--topband:60px;padding-bottom:8px;padding-left:4vw;padding-right:4vw}.home>.wallet,.home>.corner{top:8px}}
+@media (min-width:1100px) and (min-height:700px){.home{--topband:80px}}
+/* Home without subtitle: a bit more air between the logo and the menu */
+.home .logo{margin-bottom:10px}
+@media (max-height:500px){.home .logo{margin-bottom:8px}}
+@media (min-width:1100px) and (min-height:700px){.home .logo{margin-bottom:18px}}
