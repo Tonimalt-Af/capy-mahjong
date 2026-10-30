@@ -257,6 +257,25 @@ test('home: carrot pill and corner buttons never overlap the title or menu (iPho
   }
   await expect(page.locator('.home .tag')).toHaveCount(0);
 });
+test('home: cat, bear and mascot A are fully visible with breathing room and never touch the buttons (phone sizes, notch, desktop)', async ({ page }) => {
+  await seed(page, { carrots: 85 });
+  const mobile = test.info().project.name.startsWith('mobile');
+  const cdp = await page.context().newCDPSession(page);
+  const sizes = mobile ? [{ width: 1024, height: 472 }, { width: 932, height: 430 }, { width: 844, height: 390 }, { width: 667, height: 375 }] : [{ width: 1440, height: 900 }, { width: 1280, height: 720 }, { width: 1024, height: 640 }];
+  for (const inset of mobile ? [null, { top: 0, left: 59, right: 59, bottom: 21 }] : [null]) {
+    if (inset) await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: inset });
+    for (const vp of sizes) {
+      await page.setViewportSize(vp); await page.goto('/'); await page.waitForFunction(() => document.body.classList.contains('home-art'));
+      const btns = await Promise.all(['#h-play', '#h-levels', '#h-modes', '#h-coll', '.total'].map((s) => box(page, s)));
+      for (const sel of ['.hero-capy:not(.small)', '.hero-friend.f-cat', '.hero-friend.f-bear']) {
+        const m = await box(page, sel); const tag = `${sel} ${vp.width}x${vp.height} ${JSON.stringify(inset)}`;
+        expect(m.y + m.height, tag).toBeLessThanOrEqual(vp.height - (inset ? inset.bottom : 0) - 6);
+        expect(m.x, tag).toBeGreaterThanOrEqual(0); expect(m.x + m.width, tag).toBeLessThanOrEqual(vp.width);
+        for (const b of btns) expect(overlaps(m, b), tag).toBe(false);
+      }
+    }
+  }
+});
 test('PWA + SEO: standalone manifest with wide screenshots, French meta, JSON-LD, robots and sitemap', async ({ page }) => {
   const m = await (await page.request.get('/manifest.webmanifest')).json();
   expect(m.display).toBe('standalone'); expect(m.display_override).toContain('fullscreen'); expect(m.lang).toBe('fr'); expect(m.id).toBeTruthy(); expect(m.categories).toContain('games');
