@@ -107,6 +107,6 @@ test('every level has its own name: on the map and in game', async ({ page }) =>
   await expect(page.locator('#g-lvl')).toContainText(/La carotte du goûter|Rivière/);
   await page.goto('/'); await tap(page, '#h-levels');
   await expect(page.locator('.node[data-n="0"] .lname')).toHaveText('Premier plouf');
-  await expect(page.locator('.node[data-n="3"] .lname')).toHaveText('Yuzu au fil de l\'eau');
+  await expect(page.locator('.node[data-n="3"] .lname')).toHaveText('La grande feuille ronde');
   const names = await page.locator('.node .lname').allTextContents(); expect(new Set(names).size).toBe(names.length);
 });

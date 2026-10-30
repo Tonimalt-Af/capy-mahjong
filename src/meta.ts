@@ -15,6 +15,10 @@ export { dayKey };
 const prevDay = (k: string) => { const [y, m, d] = k.split('-').map(Number); return dayKey(new Date(y, m - 1, d - 1)); };
 
 const DAILY_LAYOUTS = ['pyramide', 'fleur', 'papillon', 'forteresse', 'montagne', 'tortue', 'coeur', 'chat', 'ours', 'etoile', 'champignon', 'capy'];
+/** Phase 3: from 31 Oct 2026 the daily draws from 30 boards (64+ tiles). Earlier days keep their board (calendar replays, shares). */
+const DAILY_LAYOUTS_2 = ['pyramide', 'yuzu', 'nenuphar', 'fleur', 'sapin', 'tasse', 'coeur', 'etoile', 'feuille', 'bonhomme', 'papillon', 'ours', 'nuage', 'lanterne', 'chat', 'champignon',
+  'chene', 'bassin', 'cabane', 'forteresse', 'herisson', 'torii', 'capy', 'escalier', 'eventail', 'sommets', 'montagne', 'refuge', 'pagode', 'tortue'];
+const DAILY_POOL_SWITCH = '2026-10-31';
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 export const frDate = (k: string) => { const [, m, d] = k.split('-').map(Number); return `${d === 1 ? '1er' : d} ${MOIS[m - 1]}`; };
 
@@ -31,20 +35,28 @@ export const DAILY_LEGEND = 0.35;
 // ---------- difficulty (zen / free play), inspired by Microsoft Mahjong's 4 tiers
 export type Diff = 'facile' | 'moyen' | 'difficile' | 'expert';
 export const DIFFS: { id: Diff; name: string; pool: string[]; min: number; desc: string }[] = [
-  { id: 'facile', name: 'Facile', pool: ['galet', 'carotte', 'pont', 'yuzu', 'pyramide', 'papillon'], min: 0.7, desc: '36 à 84 tuiles' },
-  { id: 'moyen', name: 'Moyen', pool: ['fleur', 'coeur', 'nuage', 'ours', 'chat', 'champignon'], min: 0.5, desc: '72 à 90 tuiles' },
-  { id: 'difficile', name: 'Difficile', pool: ['forteresse', 'etoile', 'montagne', 'capy'], min: 0.3, desc: '82 à 120 tuiles' },
-  { id: 'expert', name: 'Expert', pool: ['tortue', 'capy', 'montagne', 'etoile'], min: 0, desc: 'Grands plateaux pièges' },
+  { id: 'facile', name: 'Facile', pool: ['galet', 'carotte', 'pont', 'flocon', 'canard', 'pyramide', 'yuzu', 'nenuphar', 'papillon'], min: 0.7, desc: '36 à 84 tuiles' },
+  { id: 'moyen', name: 'Moyen', pool: ['fleur', 'sapin', 'tasse', 'coeur', 'etoile', 'feuille', 'bonhomme', 'ours', 'nuage', 'lanterne', 'chat', 'champignon', 'chene'], min: 0.5, desc: '72 à 92 tuiles' },
+  { id: 'difficile', name: 'Difficile', pool: ['bassin', 'cabane', 'forteresse', 'herisson', 'torii', 'capy', 'escalier', 'eventail', 'sommets', 'montagne'], min: 0.3, desc: '96 à 120 tuiles' },
+  { id: 'expert', name: 'Expert', pool: ['tortue', 'pagode', 'refuge', 'capy', 'montagne', 'etoile'], min: 0, desc: 'Grands plateaux pièges' },
 ];
 /** Same board for everyone on a given day. */
 export function dailyLevel(key = dayKey(), late = false): PlayLevel {
   const h = hash('capy-daily-' + key);
-  return mk(DAILY_LAYOUTS[h % DAILY_LAYOUTS.length], h, (h >>> 8) % 5, { mode: 'daily', title: `Défi du ${frDate(key)}`, date: key, hints: 1, shuffles: 1, legend: DAILY_LEGEND, ...(late ? { late: true, title: `Rattrapage · ${frDate(key)}` } : {}) });
+  const pool = key >= DAILY_POOL_SWITCH ? DAILY_LAYOUTS_2 : DAILY_LAYOUTS;
+  return mk(pool[h % pool.length], h, (h >>> 8) % 5, { mode: 'daily', title: `Défi du ${frDate(key)}`, date: key, hints: 1, shuffles: 1, legend: DAILY_LEGEND, ...(late ? { late: true, title: `Rattrapage · ${frDate(key)}` } : {}) });
 }
+/** Endless tiers: sizes never overlap between tiers, so boards only grow; each run draws its own board in each tier. */
+export const ENDLESS_TIERS = [['galet'], ['carotte', 'pont', 'flocon'], ['canard', 'pyramide', 'yuzu', 'nenuphar'], ['fleur', 'sapin', 'tasse', 'coeur'],
+  ['etoile', 'feuille', 'bonhomme', 'nuage', 'ours'], ['lanterne', 'chat', 'champignon', 'chene'], ['bassin', 'cabane', 'forteresse', 'herisson'],
+  ['torii', 'capy', 'escalier', 'eventail'], ['sommets', 'montagne', 'refuge', 'pagode'], ['tortue']];
 /** Endless run: boards grow with the round, world rotates. */
 export function endlessLevel(round: number, seed: number): PlayLevel {
-  const ladder = ['galet', 'carotte', 'pont', 'pyramide', 'yuzu', 'fleur', 'nuage', 'champignon', 'capy', 'tortue'];
-  const layout = ladder[Math.min(ladder.length - 1, Math.floor(round / 2))];
+  const t = Math.min(ENDLESS_TIERS.length - 1, Math.floor(round / 2)); const tier = ENDLESS_TIERS[t];
+  // two different boards per tier (smaller one first, so boards never shrink), a different mix every run
+  const h = hash(`endless-${seed}-${t}`); const i = h % tier.length; const j = tier.length > 1 ? (i + 1 + ((h >>> 8) % (tier.length - 1))) % tier.length : i;
+  const [a, b] = [tier[i], tier[j]].sort((x, y) => LAYOUTS[x].make().length - LAYOUTS[y].make().length);
+  const layout = round % 2 ? b : a;
   return mk(layout, (seed + round * 7907) >>> 0, round % 5, { mode: 'endless', title: `Infini · manche ${round + 1}`, round, hints: round < 4 ? 2 : 1, shuffles: round < 6 ? 2 : 1 });
 }
 export function zenLevel(seed: number, diff: Diff = 'moyen'): PlayLevel {
@@ -168,9 +180,11 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: 'world1', name: 'Au fil de l\'eau', desc: 'Termine le monde Rivière.', icon: 'canard', test: (c) => lvDone(c, 0, 5) },
   { id: 'world3', name: 'Explorateur', desc: 'Termine le monde Forêt.', icon: 'feuille', test: (c) => lvDone(c, 12, 17) },
   { id: 'allworlds', name: 'Maître du temple', desc: 'Termine les 30 niveaux.', icon: 'couronne', test: (c) => lvDone(c, 0, 29) },
+  { id: 'secret1', name: 'Passage secret', desc: 'Termine un niveau secret.', icon: 'lunettes', test: (c) => [30, 31, 32, 33, 34].some((n) => c.stars[n] > 0) },
+  { id: 'secrets', name: 'Cartographe', desc: 'Termine les 5 niveaux secrets.', icon: 'lotus', test: (c) => lvDone(c, 30, 34) },
   { id: 'turtle', name: 'La grande tortue', desc: 'Vide un plateau de 144 tuiles.', icon: 'tournesol', test: (c) => !!c.last && c.last.tiles >= 144 },
   { id: 'stars45', name: 'Ciel étoilé', desc: 'Récolte 45 étoiles.', icon: 'hiver', test: (c) => c.totalStars >= 45 },
-  { id: 'stars90', name: 'Constellation', desc: 'Récolte les 90 étoiles.', icon: 'printemps', test: (c) => c.totalStars >= 90 },
+  { id: 'stars90', name: 'Constellation', desc: 'Récolte 90 étoiles.', icon: 'printemps', test: (c) => c.totalStars >= 90 },
   { id: 'daily1', name: 'Rendez-vous', desc: 'Réussis un défi du jour.', icon: 'serviette', test: (c) => c.stats.dailyDone.length >= 1 },
   { id: 'late1', name: 'Rattrapage', desc: 'Rattrape un défi manqué depuis le calendrier.', icon: 'serviette', test: (c) => c.stats.dailyLate.length >= 1 },
   { id: 'streak3', name: 'Rituel', desc: 'Réussis le défi 3 jours de suite.', icon: 'bonnet', test: (c) => c.stats.bestStreak >= 3 },

@@ -1,11 +1,12 @@
 # Mahjong Capybaras 🦫
 
-Mahjong solitaire kawaii, mobile-first (paysage), 30 niveaux / 5 mondes, PWA hors ligne. 100 % gratuit, sans pub, sans achat intégré.
+Mahjong solitaire kawaii, mobile-first (paysage), 35 niveaux / 5 mondes (dont 5 secrets), PWA hors ligne. 100 % gratuit, sans pub, sans achat intégré.
 
 ## Contenu
-- **Campagne** : 30 niveaux, difficulté progressive (graines calibrées), 3 étoiles par niveau.
+- **Campagne** : 30 niveaux, chacun sur son propre plateau thématique (rivière, onsen, forêt, montagne, temple), difficulté progressive (graines calibrées), 3 étoiles par niveau.
+- **Niveaux secrets** : un par monde, ouvert avec 15 étoiles dans ce monde (35 plateaux différents au total).
 - **Modes** : Défi du jour (calendrier + série), Infini (plateaux de plus en plus grands), Zen (4 difficultés : Facile, Moyen, Difficile, Expert).
-- **Plateaux en forme** : Cœur, Capybara, Chat, Ourson, Étoile, Champignon (+ classiques). Tous garantis solubles.
+- **Plateaux en forme** : 35 plateaux (nénuphar, canard, lanternes, sapin, bonhomme de neige, torii, pagode, tasse de thé, hérisson…). Tous garantis solubles. Le défi du jour, le Zen et l’Infini puisent dans ces plateaux.
 - **Amis** : chat noir, ourson et le **capydindon légendaire** — une paire dorée rare (garantie dans le défi du jour) : +1000 points, +25 carottes, et sa tenue la première fois.
 - **Carottes** 🥕 : gagnées en jouant (niveaux, défi, infini, zen, succès), dépensées dans la Collection pour des tenues, des jeux de tuiles (Ménagerie, Chats noirs, Oursons) et des fonds de plateau (Nuit étoilée, Sakura, Potiron). Aucun argent réel.
 - **Musique lo-fi et sons** : entièrement synthétisés (Web Audio, aucun fichier) : piano électrique façon Rhodes, accords jazz (7e/9e), basse douce, batterie feutrée, swing, un morceau par monde, sans aucune couche de bruit (ni vinyle ni souffle). Volumes réglables dans Réglages (musique 45 %, effets 60 % par défaut). Pour réécouter/mesurer : `npm run dev` puis `node scripts/audio/render.mjs /src/audio.ts previews/audio/after 0` (WAV + pic/RMS) ; extraits MP3 avant/après dans `previews/audio/`.

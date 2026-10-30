@@ -4,7 +4,7 @@ import { carrotReward, missedDays, canReplay, firstDayOf, NEW_STATS, OUTFITS, TH
 import { parseDeep } from '../src/deeplink';
 import { addDays } from '../src/dates';
 import { deal } from '../src/engine';
-import { LAYOUTS } from '../src/levels';
+import { LAYOUTS, ALL_LEVELS } from '../src/levels';
 
 const T = '2026-10-30';
 describe('catch-up dailies', () => {
@@ -31,8 +31,8 @@ describe('catch-up dailies', () => {
 });
 describe('shop length and seasonal rotation', () => {
   const permanent = (Object.keys(SHELF_ITEMS) as (keyof typeof SHELF_ITEMS)[]).flatMap((k) => SHELF_ITEMS[k]).filter((i) => !i.legend && !i.month).reduce((a, i) => a + i.price, 0);
-  /** A regular player: today's daily every day, 2 levels a day (first clears, then replays), achievements over the month. */
-  const regularDay = (d: number) => carrotReward({ mode: 'daily', streak: d + 1, legend: d % 3 === 0 }) + 2 * (d < 15 ? carrotReward({ mode: 'level', first: true, stars: 2 }) : carrotReward({ mode: 'level', stars: 2 })) + (d < 30 ? Math.round((ACHIEVEMENTS.length * 0.75 * 20) / 30) : 0);
+  /** A regular player: today's daily every day, 2 levels a day (first clears of the 35 levels incl. secrets, then replays), achievements over the month. */
+  const regularDay = (d: number) => carrotReward({ mode: 'daily', streak: d + 1, legend: d % 3 === 0 }) + 2 * (d < ALL_LEVELS.length / 2 ? carrotReward({ mode: 'level', first: true, stars: 2 }) : carrotReward({ mode: 'level', stars: 2 })) + (d < 30 ? Math.round((ACHIEVEMENTS.length * 0.75 * 20) / 30) : 0);
   const daysToEmpty = (total: number) => { let c = 0, d = 0; while (c < total) c += regularDay(d++); return d; };
   it('the permanent shop lasts about a month for a regular player (was ~24 days)', () => {
     expect(permanent).toBeGreaterThan(4000); const d = daysToEmpty(permanent + 400); // + the 2 seasonal items on sale

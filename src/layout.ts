@@ -10,3 +10,7 @@ export function turtle(): Pos[] {
   out.push({ x: 13, y: 7, z: 4 });
   return out;
 }
+
+type GL = [z: number, dx: number, dy: number, rows: string[]];
+/** ASCII layers: '#' = a tile at (dx + col*2, dy + row*2) on layer z (half-tile units). */
+export const grid = (...layers: GL[]) => { const o: Pos[] = []; for (const [z, dx, dy, rows] of layers) rows.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === '#') o.push({ x: dx + i * 2, y: dy + j * 2, z }); })); return o; };

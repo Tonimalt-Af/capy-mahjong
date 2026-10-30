@@ -1,13 +1,13 @@
 import { turtle, type Pos } from './layout';
+import { BOARDS } from './boards';
 
 const rect = (out: Pos[], x0: number, y0: number, cols: number, rows: number, z: number) => {
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) out.push({ x: x0 + i * 2, y: y0 + j * 2, z });
 };
 const build = (...parts: [number, number, number, number, number][]) => { const o: Pos[] = []; parts.forEach((p) => rect(o, ...p)); return o; };
 
-type GL = [z: number, dx: number, dy: number, rows: string[]];
-/** ASCII layers: '#' = a tile at (dx + col*2, dy + row*2) on layer z (half-tile units). */
-export const grid = (...layers: GL[]) => { const o: Pos[] = []; for (const [z, dx, dy, rows] of layers) rows.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === '#') o.push({ x: dx + i * 2, y: dy + j * 2, z }); })); return o; };
+export { grid } from './layout';
+import { grid } from './layout';
 
 export interface LayoutDef { id: string; name: string; make: () => Pos[]; shape?: boolean }
 export const LAYOUTS: Record<string, LayoutDef> = {
@@ -65,6 +65,7 @@ export const LAYOUTS: Record<string, LayoutDef> = {
     [1, 3, 1, ['.###..###.', '##########', '.########.']],
     [2, 7, 3, ['###', '###']],
   ) },
+  ...BOARDS,
 };
 
 export interface World { id: string; name: string; music: number; bg: [string, string]; accent: string; mascot: string }
@@ -76,36 +77,48 @@ export const WORLDS: World[] = [
   { id: 'temple', name: 'Temple', music: 4, bg: ['#FFF1CF', '#E8B864'], accent: '#B9822A', mascot: 'chat' },
 ];
 
-export interface Level { n: number; world: number; index: number; layout: string; /** unique campaign level name */ name?: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number }
-// Audit 2026-10-30 (steering): no more "Galet, Pont, Galet, Pont…": every world mixes several boards, no board twice in a row,
-// 17 boards over 30 levels (3 new simple shapes: carotte, yuzu, nuage). L8 keeps its board+seed (soft-lock repro test).
+export interface Level { n: number; world: number; index: number; layout: string; /** unique campaign level name */ name?: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number; /** secret level of its world */ secret?: boolean }
+// Phase 3 (content & variety): every level has its own board, themed by its world (river, onsen, forest, snowy peaks,
+// temple), and no board is shared between worlds. 35 boards: 30 levels + 5 secret levels (one per world).
+// L8 keeps its board+seed (soft-lock repro test).
 const PLAN: string[][] = [
-  ['galet', 'carotte', 'pont', 'yuzu', 'papillon', 'coeur'],
-  ['fleur', 'pyramide', 'etoile', 'nuage', 'ours', 'chat'],
-  ['champignon', 'yuzu', 'forteresse', 'coeur', 'papillon', 'capy'],
-  ['etoile', 'montagne', 'ours', 'nuage', 'capy', 'tortue'],
-  ['forteresse', 'chat', 'montagne', 'champignon', 'capy', 'tortue'],
+  ['galet', 'carotte', 'pont', 'nenuphar', 'canard', 'coeur'],
+  ['lanterne', 'pyramide', 'yuzu', 'nuage', 'ours', 'bassin'],
+  ['champignon', 'chene', 'cabane', 'feuille', 'papillon', 'capy'],
+  ['sapin', 'etoile', 'bonhomme', 'montagne', 'sommets', 'refuge'],
+  ['forteresse', 'chat', 'escalier', 'torii', 'pagode', 'tortue'],
 ];
-/** Every level's own name, themed by world (shown on the map, in game, on the win card and in the share text). */
+/** Every level's own name, themed by world and matching its board (map, HUD, pause, win card, share text). */
 export const LEVEL_NAMES: string[][] = [
-  ['Premier plouf', 'La carotte du goûter', 'Le pont de bambou', 'Yuzu au fil de l\'eau', 'Le papillon des roseaux', 'Cœur de nénuphar'],
-  ['Fleur de vapeur', 'La pile de serviettes', 'Les étoiles du bassin', 'Petit nuage tiède', 'Ourson en peignoir', 'Le chat du bain chaud'],
-  ['Le champignon moussu', 'Le verger aux yuzus', 'La cabane dans les chênes', 'Le cœur de la clairière', 'Papillons de fougère', 'Le grand capybara des bois'],
-  ['Flocon étoilé', 'Le col de la Patate', 'Ourson sous la neige', 'Nuage de neige', 'Capybara en bonnet', 'La tortue des glaces'],
-  ['Les portes du temple', 'Le chat porte-bonheur', 'Les mille marches', 'Le jardin de mousse', 'Le sage capybara', 'La grande tortue d\'or'],
+  ['Premier plouf', 'La carotte du goûter', 'Le pont de bambou', 'La grande feuille ronde', 'Le canard des roseaux', 'Cœur de nénuphar'],
+  ['Les lanternes du soir', 'La pile de serviettes', 'Les yuzus du bain', 'Petit nuage tiède', 'Ourson en peignoir', 'Le bain fumant'],
+  ['Le champignon moussu', 'Le vieil arbre', 'La cabane dans les chênes', 'L\'érable rouge', 'Papillons de fougère', 'Le grand capybara des bois'],
+  ['Le sapin enneigé', 'Flocon étoilé', 'Le bonhomme de neige', 'Le col de la Patate', 'Les trois sommets', 'Le refuge douillet'],
+  ['Les portes du temple', 'Le chat porte-bonheur', 'Les mille marches', 'Le portique vermillon', 'La pagode aux cinq toits', 'La grande tortue d\'or'],
 ];
+/** One secret level per world: opens with SECRET_STARS stars in that world (replaying for stars is optional, never required). */
+export const SECRET_PLAN = ['fleur', 'tasse', 'herisson', 'flocon', 'eventail'];
+export const SECRET_NAMES = ['La fleur de lotus', 'La tasse de thé', 'Le hérisson du sous-bois', 'Le cristal de givre', 'L\'éventail doré'];
+export const SECRET_STARS = 15;
 /** Seeds picked by simulation (scripts: random-play win rate ≈ 95% → 35%) for a smooth difficulty curve. */
 // Audit 2026-10-30: all levels re-seeded with the smart-bot simulation (src/sim.ts, random shuffles, 8% capydindon) for a
-// smooth curve: bot clear rate ≈ 98% (L1) → ≈ 82% (L30), no spikes (L8 kept: soft-lock repro). L5, L14, L23 hide a capydindon.
-export const SEEDS = [107922,200006,331685,423769,1047529,607937,707940,70859,1010893,1015868,1195061,1200036,1323796,2240559,1531721,1600048,1700051,2196004,1900057,2071331,2107982,2540583,6260672,2518857,2698050,2600078,3214816,2847598,3034710,3000090];
+// smooth curve: bot clear rate ≈ 98% (L1) → ≈ 82% (L30), no spikes (L8 kept: soft-lock repro). Phase 3: re-seeded for the new
+// boards (L11 and L15 hide a capydindon); seeds 31–35 are the secret levels, each as hard as its world's last level.
+export const SEEDS: number[] = [9100003,9295034,9300009,9423769,9595043,9607937,9707940,70859,9923784,10079220,10187142,10936503,10307958,10431718,10816805,21769291,10747565,11243518,10947571,11055493,11385147,11239661,12020698,11748508,11563427,11607997,11723838,12124763,23005978,12213903,12108012,12223853,12387208,12400102,13355357];
 /** Hints per level: 4 / 3 / 2 in the first worlds, and 2 (not 1) on the big boards of worlds 4–5. */
 export const hintBudget = (world: number) => Math.max(2, 4 - world);
 /** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */
 export const undoBudget = (world: number) => (world === 0 ? -1 : world <= 2 ? 5 : 3);
-export const LEVELS: Level[] = PLAN.flatMap((ls, w) => ls.map((layout, i) => {
-  const n = w * 6 + i; const tiles = LAYOUTS[layout].make().length;
-  return { n, world: w, index: i, layout, name: LEVEL_NAMES[w][i], seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: hintBudget(w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w) };
-}));
+const mkLevel = (layout: string, w: number, i: number, n: number, name: string): Level => {
+  const tiles = LAYOUTS[layout].make().length;
+  return { n, world: w, index: i, layout, name, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: hintBudget(w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w) };
+};
+/** The 30-level campaign (n = 0…29). */
+export const LEVELS: Level[] = PLAN.flatMap((ls, w) => ls.map((layout, i) => mkLevel(layout, w, i, w * 6 + i, LEVEL_NAMES[w][i])));
+/** Secret levels: n = 30 + world, shown as a 7th node on the world's map. */
+export const SECRETS: Level[] = SECRET_PLAN.map((layout, w) => ({ ...mkLevel(layout, w, 6, 30 + w, SECRET_NAMES[w]), secret: true }));
+export const ALL_LEVELS: Level[] = [...LEVELS, ...SECRETS];
+export const levelAt = (n: number) => ALL_LEVELS[n];
 
 /** Stars: 3 = within par and no hint; 2 = within 1.6×par or at most 1 hint; 1 = cleared */
 export function stars(time: number, par: number, hintsUsed: number): number {

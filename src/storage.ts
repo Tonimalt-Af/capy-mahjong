@@ -1,5 +1,5 @@
 import { NEW_STATS, ACHIEVEMENTS, SHELF_ITEMS, DECOR, hash, DIFFS, type Stats, type Diff, type PlayLevel, type Mode } from './meta';
-import { LAYOUTS, LEVELS } from './levels';
+import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt } from './levels';
 import { KIND_BY_ID, type Theme } from './tiles';
 import { isDay } from './dates';
 
@@ -40,9 +40,9 @@ function stats(x: unknown): Stats {
 const MODES: Mode[] = ['level', 'daily', 'endless', 'zen'];
 function level(x: unknown): PlayLevel | null {
   if (!isObj(x) || !has(LAYOUTS, x.layout) || !MODES.includes(x.mode as Mode)) return null;
-  const mode = x.mode as Mode; const l: PlayLevel = { mode, layout: x.layout, n: int(x.n, -1, -1, 29), world: int(x.world, 0, 0, 4), index: int(x.index, 0, 0, 99), seed: int(x.seed, 1, 0, 2 ** 32 - 1), par: int(x.par, 300, 30, 9999), hints: int(x.hints, 1, 0, 99), shuffles: int(x.shuffles, 1, 0, 99), undos: int(x.undos, -1, -1, 99), legend: typeof x.legend === 'number' && x.legend >= 0 && x.legend <= 1 ? x.legend : 0, title: typeof x.title === 'string' ? x.title.slice(0, 60) : '' };
+  const mode = x.mode as Mode; const l: PlayLevel = { mode, layout: x.layout, n: int(x.n, -1, -1, ALL_LEVELS.length - 1), world: int(x.world, 0, 0, 4), index: int(x.index, 0, 0, 99), seed: int(x.seed, 1, 0, 2 ** 32 - 1), par: int(x.par, 300, 30, 9999), hints: int(x.hints, 1, 0, 99), shuffles: int(x.shuffles, 1, 0, 99), undos: int(x.undos, -1, -1, 99), legend: typeof x.legend === 'number' && x.legend >= 0 && x.legend <= 1 ? x.legend : 0, title: typeof x.title === 'string' ? x.title.slice(0, 60) : '' };
   if (mode === 'level' && l.n < 0) return null;
-  if (mode === 'level') l.name = LEVELS[l.n].name; // never taken from the save: names are ours
+  if (mode === 'level') l.name = levelAt(l.n).name; // never taken from the save: names are ours
   if (mode === 'daily') { if (!isDay(x.date)) return null; l.date = x.date; if (x.late === true) l.late = true; }
   if (mode === 'endless') l.round = int(x.round, 0, 0, 999);
   if (mode === 'zen' || x.diff !== undefined) { const d = DIFFS.find((f) => f.id === x.diff); if (d) l.diff = d.id; else if (mode === 'zen') l.diff = 'moyen'; }
@@ -64,7 +64,7 @@ const SHELVES = SHELF_ITEMS;
 /** Type-check every field of a parsed save; never throws. */
 export function sanitize(x: unknown): Save {
   const i = isObj(x) ? x : {}; const s = defaults();
-  if (isObj(i.stars)) for (const [k, v] of Object.entries(i.stars)) { const n = Number(k); if (Number.isInteger(n) && n >= 0 && n < 30 && typeof v === 'number') { const st = int(v, 0, 0, 3); if (st) s.stars[n] = st; } }
+  if (isObj(i.stars)) for (const [k, v] of Object.entries(i.stars)) { const n = Number(k); if (Number.isInteger(n) && n >= 0 && n < ALL_LEVELS.length && typeof v === 'number') { const st = int(v, 0, 0, 3); if (st) s.stars[n] = st; } }
   if (isObj(i.best)) for (const [k, v] of Object.entries(i.best)) { if ((/^\d{1,2}$/.test(k) && +k < 30) || (k[0] === 'd' && isDay(k.slice(1)))) { const b = int(v, -1, 0, 1e7); if (b >= 0) s.best[k] = b; } }
   s.settings = migrateSettings(i.settings); s.seenHowTo = bool(i.seenHowTo, false); if (i.seenUndo === true) s.seenUndo = true;
   s.stats = stats(i.stats);
@@ -123,5 +123,7 @@ export function importCode(text: string): { save: Save } | { error: string } {
   if (!isObj(data) || !isObj(data.stats) || !isObj(data.settings)) return { error: 'Code illisible.' };
   return { save: sanitize(data) };
 }
-export const unlocked = (s: Save, n: number) => n === 0 || (s.stars[n - 1] ?? 0) > 0;
+/** Stars earned in a world's 6 campaign levels (secret level not counted). */
+export const worldStars = (s: Save, w: number) => LEVELS.filter((l) => l.world === w).reduce((a, l) => a + (s.stars[l.n] ?? 0), 0);
+export const unlocked = (s: Save, n: number) => (n >= LEVELS.length ? worldStars(s, n - LEVELS.length) >= SECRET_STARS : n === 0 || (s.stars[n - 1] ?? 0) > 0);
 export const totalStars = (s: Save) => Object.values(s.stars).reduce((a, b) => a + b, 0);

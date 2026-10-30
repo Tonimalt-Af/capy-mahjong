@@ -58,7 +58,7 @@ test('settings: volume sliders start at the soft defaults and persist', async ({
   await tap(page, '#h-settings'); await expect(page.locator('#v-music')).toHaveValue('20');
 });
 test('world map: locked world tabs are disabled', async ({ page }) => {
-  await tap(page, '#h-levels'); await expect(page.locator('.tab[data-w="1"]')).toBeDisabled(); await expect(page.locator('.node')).toHaveCount(6);
+  await tap(page, '#h-levels'); await expect(page.locator('.tab[data-w="1"]')).toBeDisabled(); await expect(page.locator('.node:not(.secret)')).toHaveCount(6); await expect(page.locator('.node.secret')).toBeDisabled();
 });
 test('board fits inside the stage', async ({ page }) => {
   await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('capy-mahjong-v1')!); s.stars = Object.fromEntries(Array.from({ length: 29 }, (_, i) => [i, 1])); localStorage.setItem('capy-mahjong-v1', JSON.stringify(s)); });

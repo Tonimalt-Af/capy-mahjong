@@ -20,6 +20,21 @@ body[data-world=onsen] .decor .steam{display:flex}
 .snow{position:absolute;inset:0;display:none}.snow i{position:absolute;top:-10px;width:7px;height:7px;border-radius:50%;background:#fff;opacity:.9;animation:snow linear infinite}
 @keyframes snow{to{transform:translate(30px,110vh)}}
 body[data-world=montagne] .snow{display:block}
+/* phase 3: per-world ambience — Rivière ripples + drifting leaves, Forêt falling leaves, Temple sakura petals (subtle, behind everything) */
+.drift,.ripple{position:absolute;inset:0;display:none}
+.drift i{position:absolute;top:-24px;width:14px;height:10px;border-radius:0 100% 0 100%;opacity:.75;animation:drift linear infinite}
+.drift i:nth-child(3n){width:11px;height:8px}.drift i:nth-child(4n+1){animation-name:drift2}
+@keyframes drift{0%{transform:translate(0,0) rotate(var(--r))}50%{transform:translate(-40px,55vh) rotate(calc(var(--r) + 200deg))}100%{transform:translate(20px,112vh) rotate(calc(var(--r) + 420deg))}}
+@keyframes drift2{0%{transform:translate(0,0) rotate(var(--r))}50%{transform:translate(50px,55vh) rotate(calc(var(--r) - 180deg))}100%{transform:translate(-10px,112vh) rotate(calc(var(--r) - 400deg))}}
+body[data-world=foret] .drift,body[data-world=temple] .drift,body[data-world=riviere] .drift{display:block}
+body[data-world=foret] .drift i{background:#E8963A}body[data-world=foret] .drift i:nth-child(2n){background:#7DB55A}body[data-world=foret] .drift i:nth-child(5n){background:#C9572F}
+body[data-world=temple] .drift i{background:#F7B8C8;border-radius:60% 0 60% 0;width:11px;height:9px}body[data-world=temple] .drift i:nth-child(2n){background:#FCD5DF}
+body[data-world=riviere] .drift i{background:#8FC96A;opacity:.55}body[data-world=riviere] .drift i:nth-child(n+7){display:none}
+.ripple i{position:absolute;width:90px;height:22px;border:2px solid #fffc;border-radius:50%;opacity:0;animation:ripple 6.4s ease-out infinite}
+@keyframes ripple{0%{transform:scale(.2);opacity:0}20%{opacity:.8}100%{transform:scale(1.6);opacity:0}}
+body[data-world=riviere] .ripple{display:block}
+body[data-view=game] .drift,body[data-view=game] .ripple{opacity:.45}
+@media (prefers-reduced-motion:reduce){.drift,.ripple,.snow,.steam{display:none!important}}
 body[data-world=foret] .decor .d1{fill:#5E9F4A55}body[data-world=foret] .decor .d2{fill:#3F7F3A40}
 body[data-world=temple] .decor .d1{fill:#C9893055}
 /* buttons */
@@ -76,6 +91,11 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
 @keyframes pulse2{50%{transform:scale(1.08)}}
 .node .stars{display:flex}.node .stars .star{width:16px;height:16px}
 .node .lname{font-size:12px;font-weight:600;background:#ffffffcc;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.node.secret{left:88%;top:80%}
+.node.secret .num{border-color:#E2B33C;border-style:dashed;background:#FFF8E1;color:#B07A12;box-shadow:0 6px 0 #C99A2E}
+.node.secret.locked .num{border-color:#CDBF9C;color:#A8997A;box-shadow:0 6px 0 #B5A784;background:#F7F1E3}
+.node.secret .lname .star{width:11px;height:11px;vertical-align:-1px}
+.unl.secret{background:#FFF4D2}
 .n0{left:6.6%;top:75%}.n1{left:23%;top:30%}.n2{left:40%;top:55%}.n3{left:57%;top:78%}.n4{left:74%;top:38%}.n5{left:93%;top:28%}
 /* GAME */
 .hud{display:flex;align-items:center;gap:10px;padding:8px 12px;position:relative;z-index:3}
@@ -225,7 +245,7 @@ body[data-mode=zen] #g-time,body[data-mode=zen] #g-score{display:none}
   #v-game.active{grid-template-columns:auto 1fr auto;grid-template-rows:1fr}
   #v-game .hud{grid-column:1;grid-row:1;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:8px 0 8px 10px;gap:8px;width:84px;box-sizing:border-box}
   #v-game .hud .iconbtn{align-self:flex-start}
-  #v-game .lvl{padding:3px 6px;text-align:center;font-size:12px;white-space:normal;line-height:1.15;max-height:46px}
+  #v-game .lvl{padding:3px 6px;text-align:center;font-size:12px;white-space:normal;line-height:1.15;max-height:68px;flex-shrink:0} /* phase 3: room for 3-line names (« La pagode aux cinq toits ») */
   #v-game .lvl b{display:inline-block;margin:0 0 2px}
   #v-game .chips{flex-direction:column;margin:0;gap:6px}
   #v-game .chip{justify-content:center;font-size:13px;padding:4px 6px}
@@ -235,7 +255,7 @@ body[data-mode=zen] #g-time,body[data-mode=zen] #g-score{display:none}
 }
 .lvl .ls{display:none}.ptitle{margin:-6px 0 4px;opacity:.7;font-size:14px}
 .lvl .ic{width:15px;height:15px;vertical-align:-2px}
-@media (max-height:500px){#v-game .lvl .ln{display:none}#v-game .lvl .ls{display:block}.card.pause .capy-s{display:none}}
+@media (max-height:500px){#v-game .lvl .ln{display:none}#v-game .lvl .ls{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}.card.pause .capy-s{display:none}}
 
 /* ===== Phase 4: friends, carrots shop, legend, difficulty, backgrounds ===== */
 .carrot{width:22px;height:22px;flex:none;vertical-align:middle}

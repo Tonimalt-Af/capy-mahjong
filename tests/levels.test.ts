@@ -11,13 +11,15 @@ describe('layouts', () => {
     // no two tiles overlap on the same layer
     for (const a of p) for (const b of p) if (a !== b && a.z === b.z) expect(Math.abs(a.x - b.x) >= 2 || Math.abs(a.y - b.y) >= 2).toBe(true);
   });
+  const u = (W: number, H: number, cols: number, rows: number) => Math.min((W - 16) / (cols + 1), (H - (H < 420 ? 10 : 28)) / (rows * 1.3 + 1.2));
   it('shaped boards: at least 6 original patterns, ≤144 tiles, fit a phone landscape stage', () => {
     const shapes = Object.values(LAYOUTS).filter((l) => l.shape); expect(shapes.length).toBeGreaterThanOrEqual(6);
     for (const l of Object.values(LAYOUTS)) {
       const p = l.make(); expect(p.length).toBeLessThanOrEqual(144);
-      const cols = (Math.max(...p.map((q) => q.x)) + 2) / 2, rows = (Math.max(...p.map((q) => q.y)) + 2) / 2;
-      // never larger than the classic turtle (15×8 tiles), which is verified on a 844×390 phone in e2e
-      expect(cols, l.id).toBeLessThanOrEqual(15); expect(rows, l.id).toBeLessThanOrEqual(8);
+      const cols = Math.max(...p.map((q) => q.x)) + 2, rows = Math.max(...p.map((q) => q.y)) + 2;
+      // tiles never smaller than on the classic turtle (15×8 tiles, verified on a 844×390 phone in e2e): same fit rule as main.ts layout()
+      expect(rows / 2, l.id).toBeLessThanOrEqual(8);
+      for (const [W, H] of [[600, 300], [700, 330], [820, 360], [1200, 640]]) expect(u(W, H, cols, rows), `${l.id} ${W}×${H}`).toBeGreaterThanOrEqual(u(W, H, 30, 16));
     }
   });
   it('every shaped board is solvable and not a trap for random seeds', () => {

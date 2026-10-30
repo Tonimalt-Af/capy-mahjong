@@ -26,7 +26,7 @@ describe('endless & zen', () => {
   test('endless boards grow with rounds', () => {
     const sizes = Array.from({ length: 20 }, (_, r) => LAYOUTS[endlessLevel(r, 42).layout].make().length);
     for (let i = 1; i < sizes.length; i++) expect(sizes[i]).toBeGreaterThanOrEqual(sizes[i - 1]);
-    expect(sizes[0]).toBe(36); expect(sizes[19]).toBe(144); expect(endlessLevel(3, 42).title).toBe('Infini · manche 4');
+    expect(sizes[0]).toBe(36); expect(sizes[19]).toBe(144); // tiers never overlap in size (phase 3: several boards per tier) expect(endlessLevel(3, 42).title).toBe('Infini · manche 4');
   });
   test('endless runs are deterministic per seed and solvable', () => {
     expect(endlessLevel(2, 7).seed).toBe(endlessLevel(2, 7).seed);

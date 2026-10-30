@@ -1,6 +1,6 @@
 // Campaign balance, measured by the smart bot (careful player, no pair highlight, uses the level's shuffles).
 import { describe, it, expect } from 'vitest';
-import { LEVELS, LAYOUTS, hintBudget } from '../src/levels';
+import { LEVELS, SECRETS, LAYOUTS, hintBudget } from '../src/levels';
 import { smartRate } from '../src/sim';
 import { LEVEL_LEGEND } from '../src/meta';
 
@@ -12,5 +12,8 @@ describe('difficulty curve (audit 2026-10-30)', () => {
     for (let n = 1; n < rate.length - 1; n++) expect(rate[n], `L${n + 1}`).toBeGreaterThanOrEqual(Math.min(rate[n - 1], rate[n + 1]) - 0.12);
   });
   it('former spikes L13 and L26 are now in line with their worlds', () => { expect(rate[12]).toBeGreaterThanOrEqual(0.85); expect(rate[25]).toBeGreaterThanOrEqual(0.8); });
+  it('secret levels: a fair bonus, about as hard as their world\'s last level (never a wall)', () => {
+    for (const l of SECRETS) { const r = smartRate(LAYOUTS[l.layout].make(), l.seed, 120, { legend: LEVEL_LEGEND, shuffles: l.shuffles }); expect(r, l.name).toBeGreaterThanOrEqual(0.75); expect(r, l.name).toBeGreaterThanOrEqual(rate[l.world * 6 + 5] - 0.1); }
+  });
   it('2 hints on the big boards of worlds 4–5', () => { expect([0, 1, 2, 3, 4].map(hintBudget)).toEqual([4, 3, 2, 2, 2]); for (const l of LEVELS.filter((x) => x.world >= 3)) expect(l.hints).toBe(2); });
 }, 120_000);

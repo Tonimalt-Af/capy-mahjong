@@ -97,7 +97,7 @@ describe('save persistence: backup + never silently lose an unreadable save', ()
 
 describe('deep links (audit P1-1)', () => {
   it('rejects malformed values without throwing', () => {
-    for (const q of ['?level=abc', '?level=-1', '?level=30', '?level=1e3', '?mode=zen&seed=abc', '?mode=zen&layout=constructor', '?mode=zen&layout=__proto__', '?mode=zen&diff=hard', '?mode=bogus']) expect(parseDeep(q).bad, q).toBe(true);
+    for (const q of ['?level=abc', '?level=-1', '?level=35', '?level=1e3', '?mode=zen&seed=abc', '?mode=zen&layout=constructor', '?mode=zen&layout=__proto__', '?mode=zen&diff=hard', '?mode=bogus']) expect(parseDeep(q).bad, q).toBe(true);
     expect(parseDeep('?level=abc').deep).toBeNull();
   });
   it('accepts valid ones', () => {

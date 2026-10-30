@@ -2,8 +2,8 @@ import '@fontsource/fredoka/latin-400.css'; import '@fontsource/fredoka/latin-60
 import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
 import { deal, isFree, matches, findHint, reshuffle, clearable, type Tile } from './engine';
-import { LAYOUTS, LEVELS, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
-import { loadSave, save, reset, unlocked, totalStars, exportCode, importCode, KEY, CORRUPT_KEY, type Run } from './storage';
+import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
+import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, KEY, CORRUPT_KEY, type Run } from './storage';
 import { decorSvg } from './decor';
 import { parseDeep } from './deeplink';
 import { Sound, DEFAULT_MUSIC } from './audio';
@@ -32,6 +32,9 @@ const S = LOADED.save;
 if (!S.firstDay) { S.firstDay = firstDayOf(S.stats); save(S); }
 /** French plural: n + word (+ 's' unless given). */
 const pl = (n: number, one: string, many = `${one}s`) => `${n} ${n > 1 ? many : one}`;
+/** Campaign number, or "Secret" for the secret level of a world (n ≥ 30). */
+const isSecret = (n: number) => n >= LEVELS.length;
+const lvTag = (n: number) => (isSecret(n) ? 'Niveau secret' : `Niveau ${n + 1}`);
 const snd = new Sound(); snd.sfxOn = S.settings.sfx; snd.musicOn = S.settings.music; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol);
 const fx = new Fx();
 const $ = (id: string) => document.getElementById(id)!;
@@ -119,7 +122,9 @@ async function goLandscape() {
 // ---------- decor per world (pure SVG, behind everything)
 const decor = document.createElement('div'); decor.className = 'decor'; document.body.prepend(decor);
 decor.innerHTML = `<svg viewBox="0 0 1600 400" preserveAspectRatio="xMidYMax slice"><path class="d1" d="M0 260 C200 200 380 300 600 250 C820 200 1000 300 1200 240 C1380 190 1500 250 1600 230 V400 H0Z"/><path class="d2" d="M0 320 C240 280 420 350 700 310 C960 270 1160 350 1400 300 C1500 285 1560 300 1600 295 V400 H0Z"/></svg>
-<div class="steam"><i></i><i></i><i></i></div><div class="snow">${Array.from({ length: 24 }, (_, i) => `<i style="left:${(i * 41) % 100}%;animation-delay:${-(i * 0.7) % 9}s;animation-duration:${7 + (i % 5)}s"></i>`).join('')}</div>`;
+<div class="steam"><i></i><i></i><i></i></div><div class="snow">${Array.from({ length: 24 }, (_, i) => `<i style="left:${(i * 41) % 100}%;animation-delay:${-(i * 0.7) % 9}s;animation-duration:${7 + (i % 5)}s"></i>`).join('')}</div>
+<div class="drift">${Array.from({ length: 12 }, (_, i) => `<i style="left:${(i * 37 + 5) % 100}%;animation-delay:${-(i * 1.9) % 14}s;animation-duration:${11 + (i % 4) * 2}s;--r:${(i * 67) % 360}deg"></i>`).join('')}</div>
+<div class="ripple">${Array.from({ length: 4 }, (_, i) => `<i style="left:${12 + i * 23}%;bottom:${6 + (i % 2) * 9}%;animation-delay:${-i * 1.6}s"></i>`).join('')}</div>`;
 
 // ---------- HOME
 /** Priciest shop item the player can buy right now (drives the "you can afford…" nudges). */
@@ -153,11 +158,11 @@ function renderHome() {
     <div class="home-l">
       <h1 class="logo"><span>Mahjong</span><span class="big">Capybaras</span></h1>
       <div class="menu">
-        <button class="btn primary xl ${run ? 'resume' : ''}" id="h-play">${ic('play')}<span>${run ? 'Reprendre' : tot ? 'Continuer' : 'Jouer'}${run ? `<small>${run.level.mode === 'level' ? `Niveau ${run.level.n + 1}` : run.level.mode === 'daily' ? (run.level.late ? 'Rattrapage' : 'Défi du jour') : run.level.mode === 'zen' ? 'Zen' : `Infini · manche ${run.level.round! + 1}`} · ${pl((run.kinds.length - run.removed.length) / 2, 'paire')}</small>` : ''}</span></button>
+        <button class="btn primary xl ${run ? 'resume' : ''}" id="h-play">${ic('play')}<span>${run ? 'Reprendre' : tot ? 'Continuer' : 'Jouer'}${run ? `<small>${run.level.mode === 'level' ? lvTag(run.level.n) : run.level.mode === 'daily' ? (run.level.late ? 'Rattrapage' : 'Défi du jour') : run.level.mode === 'zen' ? 'Zen' : `Infini · manche ${run.level.round! + 1}`} · ${pl((run.kinds.length - run.removed.length) / 2, 'paire')}</small>` : ''}</span></button>
         <button class="btn" id="h-levels">${ic('map')}<span>Niveaux</span></button>
         <button class="btn" id="h-modes">${ic('cal')}<span>Modes</span>${S.stats.dailyDone.includes(today) ? '' : streak ? `<b class="dot streak" aria-label="Défi du jour à faire, série de ${pl(streak, 'jour')} en jeu">🔥${streak}</b>` : '<b class="dot" aria-label="Défi du jour disponible"></b>'}</button>
         <button class="btn" id="h-coll">${ic('bag')}<span>Collection</span></button>
-        <div class="total">${STAR(true)} ${tot} / ${LEVELS.length * 3}</div>
+        <div class="total">${STAR(true)} ${tot} / ${ALL_LEVELS.length * 3}</div>
       </div>
     </div>
     <div class="home-r" aria-hidden="true">
@@ -272,7 +277,7 @@ function renderColl(tab = collTab) {
     body = `<div class="achs">${ACHIEVEMENTS.map((a) => { const ok = S.ach.includes(a.id); return `<div class="ach ${ok ? 'ok' : ''}"><div class="a-art">${capySvg(a.icon)}</div><div><b>${a.name}</b><p>${a.desc}</p></div>${ok ? `<span class="a-check">${ic('check')}</span>` : ''}</div>`; }).join('')}</div>`;
   } else {
     const cells: [string, string][] = [['Parties gagnées', `${st.won} / ${st.played}`], ['Taux de réussite', st.played ? `${Math.round((st.won / st.played) * 100)} %` : '—'], ['Paires associées', String(st.pairs)], ['Temps de jeu', st.seconds >= 3600 ? `${Math.floor(st.seconds / 3600)} h ${Math.floor((st.seconds % 3600) / 60)} min` : `${Math.floor(st.seconds / 60)} min`],
-      ['Meilleur combo', st.bestCombo ? `×${st.bestCombo}` : '—'], ['Niveaux 3 étoiles', String(Object.values(S.stars).filter((x) => x === 3).length)], ['Étoiles', `${tot} / 90`], ['Plus rapide (36+)', st.fastest ? fmt(st.fastest) : '—'],
+      ['Meilleur combo', st.bestCombo ? `×${st.bestCombo}` : '—'], ['Niveaux 3 étoiles', String(Object.values(S.stars).filter((x) => x === 3).length)], ['Étoiles', `${tot} / ${ALL_LEVELS.length * 3}`], ['Plus rapide (36+)', st.fastest ? fmt(st.fastest) : '—'],
       ['Défis réussis', String(st.dailyDone.length)], ['Meilleure série', pl(st.bestStreak, 'jour')], ['Record Infini', pl(st.endlessBest, 'manche')], ['Plateaux zen', String(st.zenWon)],
       ['Capydindons', String(st.legends)], ['Carottes gagnées', String(st.carrotsEarned)]];
     body = `<div class="statwrap"><div class="statgrid">${cells.map(([k, v]) => `<div class="sc"><span>${k}</span><b>${v}</b></div>`).join('')}</div>${calHtml(calOff)}</div>`;
@@ -308,6 +313,12 @@ function shopTap(shelf: Shelf, id: string) {
 
 // ---------- MAP
 let mapWorld = 0;
+/** The world's secret level: a 7th node off the trail, opened by stars (shown with how many are missing). */
+function secretNode(w: number) {
+  const l = levelAt(LEVELS.length + w); const open = unlocked(S, l.n); const st = S.stars[l.n] ?? 0; const miss = SECRET_STARS - worldStars(S, w);
+  return `<button class="node secret ${open ? '' : 'locked'} ${open && !st ? 'cur' : ''}" data-n="${l.n}" ${open ? '' : 'disabled'} aria-label="${open ? `Niveau secret : ${l.name}` : `Niveau secret : encore ${pl(miss, 'étoile')} dans ce monde`}" title="${LAYOUTS[l.layout].name} · ${LAYOUTS[l.layout].make().length} tuiles">
+    <span class="num">${open ? '✦' : ic('lock')}</span><span class="stars">${[0, 1, 2].map((k) => STAR(k < st)).join('')}</span><span class="lname">${open ? l.name : `Secret · ${SECRET_STARS} ${STAR(true, 'tiny')}`}</span></button>`;
+}
 function renderMap(w = mapWorld) {
   mapWorld = w; setWorld(w);
   const W = WORLDS[w]; const lv = LEVELS.filter((l) => l.world === w);
@@ -323,6 +334,7 @@ function renderMap(w = mapWorld) {
       <svg class="trail" viewBox="0 0 600 200" preserveAspectRatio="none"><path d="M40 150 C120 40 180 40 240 110 S360 180 420 90 S540 30 570 60" /></svg>
       ${lv.map((l, i) => { const open = unlocked(S, l.n); const st = S.stars[l.n] ?? 0; const cur = open && !st; return `<button class="node n${i} ${open ? '' : 'locked'} ${cur ? 'cur' : ''}" data-n="${l.n}" ${open ? '' : 'disabled'} aria-label="Niveau ${l.n + 1} : ${l.name}" title="${LAYOUTS[l.layout].name} · ${LAYOUTS[l.layout].make().length} tuiles">
         <span class="num">${open ? l.n + 1 : ic('lock')}</span><span class="stars">${[0, 1, 2].map((k) => STAR(k < st)).join('')}</span><span class="lname">${l.name}</span></button>`; }).join('')}
+      ${secretNode(w)}
     </div>
   </div>`;
   $('m-back').onclick = () => { snd.play('click'); renderHome(); show('home'); };
@@ -336,7 +348,7 @@ interface G { level: PlayLevel; legends: number; hasLegend: boolean; idle: numbe
 let g: G | null = null; let timer = 0;
 const elapsed = () => (g ? Math.floor(((g.pausedAt || Date.now()) - g.start - g.paused) / 1000) : 0);
 
-function startLevel(n: number) { startPlay({ ...LEVELS[n], mode: 'level', title: `Niveau ${n + 1}`, legend: LEVEL_LEGEND }); }
+function startLevel(n: number) { startPlay({ ...levelAt(n), mode: 'level', title: lvTag(n), legend: LEVEL_LEGEND }); }
 function startPlay(level: PlayLevel, resume?: Run) {
   const pos = LAYOUTS[level.layout].make();
   const { tiles, solution } = deal(pos, level.seed, level.legend);
@@ -353,7 +365,7 @@ function startPlay(level: PlayLevel, resume?: Run) {
     d.setAttribute('aria-label', KIND_BY_ID.get(t.kind)!.name); d.setAttribute('role', 'button'); g!.els[t.id] = d; board.appendChild(d);
   });
   const short = level.mode === 'level' ? level.name ?? WORLDS[level.world].name : level.mode === 'daily' ? (level.late ? 'Rattrapage' : 'Défi du jour') : level.mode === 'zen' ? 'Zen' : `Manche ${level.round! + 1}`;
-  $('g-lvl').innerHTML = (level.mode === 'level' ? `<b>${level.n + 1}</b><span class="ln"> ${level.name ?? LAYOUTS[level.layout].name} · ${WORLDS[level.world].name}</span>` : `<b>${ic(level.mode === 'daily' ? 'cal' : level.mode === 'zen' ? 'leaf' : 'inf')}</b><span class="ln"> ${esc(level.title)}</span>`) + `<span class="ls">${short}</span>`;
+  $('g-lvl').innerHTML = (level.mode === 'level' ? `<b>${isSecret(level.n) ? '✦' : level.n + 1}</b><span class="ln"> ${level.name ?? LAYOUTS[level.layout].name} · ${WORLDS[level.world].name}</span>` : `<b>${ic(level.mode === 'daily' ? 'cal' : level.mode === 'zen' ? 'leaf' : 'inf')}</b><span class="ln"> ${esc(level.title)}</span>`) + `<span class="ls">${short}</span>`;
   document.body.dataset.mode = level.mode; if (!resume) S.stats.played++;
   if (!resume && (level.undos ?? -1) >= 0 && !S.seenUndo) { S.seenUndo = true; setTimeout(() => toast(`Annulations limitées : ${level.undos} sur ce plateau. Un combo ×4 en redonne une !`), 700); }
   persist(); $('g-combo').classList.remove('show');
@@ -493,7 +505,7 @@ function openOv(html: string, cls = '') { const c = $('card'); c.className = `ca
 function closeOv() { $('ov').classList.remove('show'); }
 function pause() {
   if (!g || g.over) return; if (!g.pausedAt) g.pausedAt = Date.now();
-  openOv(`<h2>Pause</h2><p class="ptitle">${g.level.mode === 'level' ? `Niveau ${g.level.n + 1} · ${g.level.name ?? ''} · ${WORLDS[g.level.world].name}` : esc(g.level.title)}</p><div class="capy-s">${capySvg('lunettes')}</div><div class="col">
+  openOv(`<h2>Pause</h2><p class="ptitle">${g.level.mode === 'level' ? `${lvTag(g.level.n)} · ${g.level.name ?? ''} · ${WORLDS[g.level.world].name}` : esc(g.level.title)}</p><div class="capy-s">${capySvg('lunettes')}</div><div class="col">
     <button class="btn primary" id="p-resume">${ic('play')}<span>Reprendre</span></button>
     <button class="btn" id="p-retry">${ic('retry')}<span>Recommencer</span></button>
     <button class="btn" id="p-settings">${ic('gear')}<span>Réglages</span></button>
@@ -514,10 +526,12 @@ function record(won: boolean, t: number) {
 function win() {
   if (!g) return; g.over = true; const t = elapsed(); const lv = g.level; const mode = lv.mode;
   let st = 0; let sc = scoreOf(g.tiles.length / 2, t, lv.par, g.hints, g.shuffles) + (g.score - g.history.length * 100);
-  let late = !!lv.late; let ribbon = ''; let tip = ''; let again = false; let best = 0; let rec = false; let prev = 0; let extra = '';
+  let secretNews: Level | null = null; let late = !!lv.late; let ribbon = ''; let tip = ''; let again = false; let best = 0; let rec = false; let prev = 0; let extra = '';
   if (mode === 'level') {
+    const secretN = LEVELS.length + lv.world; const secretWas = unlocked(S, secretN);
     st = starCount(t, lv.par, g.hints); prev = S.stars[lv.n] ?? 0; best = Math.max(S.best[lv.n] ?? 0, sc); rec = sc > (S.best[lv.n] ?? 0);
     S.stars[lv.n] = Math.max(prev, st); S.best[lv.n] = best; if (st === 3) S.stats.perfect++;
+    if (!isSecret(lv.n) && !secretWas && unlocked(S, secretN)) secretNews = levelAt(secretN);
     ribbon = `${lv.name ?? `Niveau ${lv.n + 1}`} : réussi !`; tip = st < 3 ? `3 étoiles : finir en moins de ${fmt(lv.par)} sans indice.` : 'Parfait, trois étoiles !';
   } else if (mode === 'daily') {
     again = S.stats.dailyDone.includes(lv.date!) || S.stats.dailyLate.includes(lv.date!);
@@ -534,11 +548,11 @@ function win() {
   S.stats.carrotsEarned += gain; const got = record(true, t); gain += got.length * 20; S.stats.carrotsEarned += got.length * 20; S.carrots += gain; persist();
   const legendWin = g.legends > 0; const firstLegend = g.legends > 0 && S.stats.legends === 1 && !S.owned.includes('o:capydindon'); if (firstLegend) { S.owned.push('o:capydindon'); persist(); }
   const outs = firstLegend ? [OUTFITS.find((o) => o.id === 'capydindon')!] : [];
-  if (got.length || outs.length) extra = `<div class="unlocks">${outs.map((o) => `<div class="unl leg">${capySvg(o.id)}<span>Tenue légendaire<br><b>${o.name}</b></span></div>`).join('')}${got.slice(0, 3 - outs.length).map((id) => { const a = ACHIEVEMENTS.find((x) => x.id === id)!; return `<div class="unl ach">${capySvg(a.icon)}<span>Succès<br><b>${a.name}</b></span></div>`; }).join('')}${got.length + outs.length > 3 ? `<div class="unl more">+${got.length + outs.length - 3} succès</div>` : ''}</div>`;
+  if (got.length || outs.length || secretNews) extra = `<div class="unlocks">${secretNews ? `<div class="unl secret">${capySvg(WORLDS[secretNews.world].mascot)}<span>Niveau secret ouvert<br><b>${secretNews.name}</b></span></div>` : ''}${outs.map((o) => `<div class="unl leg">${capySvg(o.id)}<span>Tenue légendaire<br><b>${o.name}</b></span></div>`).join('')}${got.slice(0, 3 - outs.length - (secretNews ? 1 : 0)).map((id) => { const a = ACHIEVEMENTS.find((x) => x.id === id)!; return `<div class="unl ach">${capySvg(a.icon)}<span>Succès<br><b>${a.name}</b></span></div>`; }).join('')}${got.length + outs.length > 3 ? `<div class="unl more">+${got.length + outs.length - 3} succès</div>` : ''}</div>`;
   snd.play('win'); fx.confetti(); buzz(40);
   const stTxt = '⭐'.repeat(st) + '☆'.repeat(3 - st); const L = LAYOUTS[lv.layout].name;
   const [shTxt, shUrl] = mode === 'daily' ? [`Mahjong Capybaras 🦫 · Défi du ${frDate(lv.date!)}${lv.late ? ' (rattrapé)' : ''}\n${stTxt} en ${fmt(t)} · 💡 ${pl(g.hints, 'indice')}\n${lv.late ? '📅 Rattrapé depuis le calendrier' : `🔥 Série de ${pl(S.stats.dailyStreak, 'jour')}`}${legendWin ? ' · 🦃 capydindon doré trouvé !' : ''}`, lv.late ? `${base()}?mode=daily&day=${lv.date}` : `${base()}?mode=daily`]
-    : mode === 'level' ? [`J'ai fini « ${lv.name ?? L} » (niveau ${lv.n + 1}) de Mahjong Capybaras en ${fmt(t)} ${stTxt}. À toi de battre mon temps !`, `${base()}?level=${lv.n}`]
+    : mode === 'level' ? [`J'ai fini « ${lv.name ?? L} » (${isSecret(lv.n) ? 'niveau secret' : `niveau ${lv.n + 1}`}) de Mahjong Capybaras en ${fmt(t)} ${stTxt}. À toi de battre mon temps !`, `${base()}?level=${lv.n}`]
     : mode === 'zen' ? [`J'ai vidé le plateau « ${L} » (${DIFFS.find((d) => d.id === (lv.diff ?? 'moyen'))!.name}) de Mahjong Capybaras 🧘 en ${fmt(t)}. Le même plateau pour toi :`, `${base()}${zenLink(lv)}`]
     : [`Manche ${lv.round! + 1} réussie en mode Infini dans Mahjong Capybaras 🦫. Jusqu'où iras-tu ?`, base()];
   const aff = affordable();
@@ -659,6 +673,7 @@ const { deep, bad } = parseDeep(location.search);
 if (location.search) history.replaceState(null, '', location.pathname); // a reload returns home (with "Reprendre") instead of restarting the link
 if (deep?.kind === 'level') {
   if (unlocked(S, deep.n)) startLevel(deep.n); // level 1 for a newcomer still gets the first-game coach
+  else if (isSecret(deep.n)) { const w = levelAt(deep.n).world; renderMap(w); show('map'); toast(`Ce niveau secret s'ouvre avec ${SECRET_STARS} étoiles dans le monde ${WORLDS[w].name}.`, 3000); }
   else { const last = Math.max(0, LEVELS.findIndex((l) => !unlocked(S, l.n)) - 1); renderMap(LEVELS[last].world); show('map'); toast(`Le niveau ${deep.n + 1} n'est pas encore débloqué : termine d'abord les précédents !`, 3000); }
 } else if (deep?.kind === 'daily') {
   const today = dayKey(); const k = deep.day;
