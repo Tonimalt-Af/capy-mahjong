@@ -1,14 +1,32 @@
 import '@fontsource/fredoka/latin-400.css'; import '@fontsource/fredoka/latin-600.css'; import '@fontsource/fredoka/latin-700.css';
 import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
-import { deal, isFree, matches, findHint, reshuffle, type Tile } from './engine';
+import { deal, isFree, matches, findHint, reshuffle, clearable, type Tile } from './engine';
 import { LAYOUTS, LEVELS, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
-import { load, save, reset, unlocked, totalStars, type Run } from './storage';
+import { loadSave, save, reset, unlocked, totalStars, KEY, CORRUPT_KEY, type Run } from './storage';
+import { parseDeep } from './deeplink';
 import { Sound, DEFAULT_MUSIC } from './audio';
 import { Fx } from './fx';
 import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, dayKey, frDate, OUTFITS, THEMES, BACKS, owns, buy, carrotReward, DIFFS, LEVEL_LEGEND, ACHIEVEMENTS, checkAchievements, type PlayLevel, type Diff, type Item, type Shelf } from './meta';
 
-const S = load();
+// Boot guard: if anything throws before the home screen is up, show a recovery screen instead of a blank page.
+let booted = false;
+function rescue() {
+  if (booted || document.querySelector('.rescue')) return;
+  const el = (tag: string, txt = '', cls = '') => { const e = document.createElement(tag); e.textContent = txt; if (cls) e.className = cls; return e; };
+  const box = el('div', '', 'rescue'); const raw = (() => { try { return localStorage.getItem(KEY) ?? ''; } catch { return ''; } })();
+  const copy = el('button', 'Copier ma sauvegarde', 'btn'); const wipe = el('button', 'Repartir de zéro', 'btn danger'); const again = el('button', 'Recharger', 'btn primary');
+  copy.onclick = () => { navigator.clipboard?.writeText(raw).then(() => { copy.textContent = 'Copiée !'; }, () => { copy.textContent = 'Copie impossible'; }); };
+  wipe.onclick = () => { if (!wipe.dataset.c) { wipe.dataset.c = '1'; wipe.textContent = 'Confirmer ?'; return; } try { if (raw) localStorage.setItem(CORRUPT_KEY, raw); localStorage.removeItem(KEY); } catch { /* blocked */ } location.reload(); };
+  again.onclick = () => location.reload();
+  const row = el('div', '', 'row'); row.append(copy, wipe, again);
+  box.append(el('h2', 'Oups, le jeu n\'a pas pu démarrer'), el('p', 'Ta sauvegarde semble abîmée. Copie-la pour la garder, puis repars de zéro (une copie reste aussi mise de côté).'), row);
+  document.body.append(box);
+}
+addEventListener('error', () => rescue());
+addEventListener('unhandledrejection', () => rescue());
+const LOADED = loadSave();
+const S = LOADED.save;
 const snd = new Sound(); snd.sfxOn = S.settings.sfx; snd.musicOn = S.settings.music; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol);
 const fx = new Fx();
 const $ = (id: string) => document.getElementById(id)!;
@@ -31,7 +49,10 @@ const ICON: Record<string, string> = {
 const CARROT = (cls = '') => `<svg class="carrot ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 9.5 C17 12 9 21 5 21.5 C4 21.6 3.4 21 3.5 20 C4 16 12 7 14.5 9.5Z" fill="#FF8A3D" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 15.5l2 1M10.5 12.5l2 1.2M6.5 18.6l1.4.8" stroke="#D9611C" stroke-width="1.3" stroke-linecap="round"/><path d="M14.2 9.6C14 7 15.5 4.5 17.5 3.5c-.2 2 0 3.5-1 5 1.4-1.2 3.4-1.6 5-1-1 1.6-2.6 2.8-5 3" fill="#3FAE6A" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
 const ic = (n: string) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-const persist = () => save(S);
+let saveWarned = false;
+const persist = () => { if (!save(S) && !saveWarned) { saveWarned = true; toast('Progression non enregistrée : stockage plein ou bloqué par le navigateur', 3500); } };
+/** Escape text for HTML templates: save/URL data never reaches innerHTML raw. */
+const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const buzz = (ms: number) => { if (S.settings.vibrate) navigator.vibrate?.(ms); };
 
 // ---------- static shell
@@ -308,7 +329,7 @@ function startPlay(level: PlayLevel, resume?: Run) {
     d.setAttribute('aria-label', KIND_BY_ID.get(t.kind)!.name); g!.els[t.id] = d; board.appendChild(d);
   });
   const short = level.mode === 'level' ? WORLDS[level.world].name : level.mode === 'daily' ? (level.late ? 'Rattrapage' : 'Défi du jour') : level.mode === 'zen' ? 'Zen' : `Manche ${level.round! + 1}`;
-  $('g-lvl').innerHTML = (level.mode === 'level' ? `<b>${level.n + 1}</b><span class="ln"> ${WORLDS[level.world].name} · ${LAYOUTS[level.layout].name}</span>` : `<b>${ic(level.mode === 'daily' ? 'cal' : level.mode === 'zen' ? 'leaf' : 'inf')}</b><span class="ln"> ${level.title}</span>`) + `<span class="ls">${short}</span>`;
+  $('g-lvl').innerHTML = (level.mode === 'level' ? `<b>${level.n + 1}</b><span class="ln"> ${WORLDS[level.world].name} · ${LAYOUTS[level.layout].name}</span>` : `<b>${ic(level.mode === 'daily' ? 'cal' : level.mode === 'zen' ? 'leaf' : 'inf')}</b><span class="ln"> ${esc(level.title)}</span>`) + `<span class="ls">${short}</span>`;
   document.body.dataset.mode = level.mode; if (!resume) S.stats.played++;
   if (!resume && (level.undos ?? -1) >= 0 && !S.seenUndo) { S.seenUndo = true; setTimeout(() => toast(`Annulations limitées : ${level.undos} sur ce plateau. Un combo ×4 en redonne une !`), 700); }
   persist(); $('g-combo').classList.remove('show');
@@ -404,11 +425,28 @@ function legendFound(ax: number, ay: number, bx: number, by: number) {
 const undoLeft = () => { if (!g) return 0; const lim = g.level.undos ?? -1; return lim < 0 ? Infinity : Math.max(0, lim + g.undoBonus - g.undos); };
 const undoLimited = () => !!g && (g.level.undos ?? -1) >= 0;
 function earnUndo(x: number, y: number) { if (!g || !undoLimited()) return; g.undoBonus++; pop(x, y + 34, '+1 annulation'); const b = $('g-undo-n'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
-function doUndo() { if (!g || g.over || !g.history.length) return; if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; } const x = g.history.pop(); if (!x) return; g.undos++; g.idle = Date.now(); g.tiles[x[0]].removed = g.tiles[x[1]].removed = false; g.sel = null; g.score = Math.max(0, g.score - 100); g.combo = 0; snd.play('click'); closeOv(); refresh(); }
+function doUndo() { if (!g || g.over || !g.history.length) return; if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; } const x = g.history.pop(); if (!x) return; g.undos++; g.idle = Date.now(); g.tiles[x[0]].removed = g.tiles[x[1]].removed = false; g.sel = null; g.score = Math.max(0, g.score - 100); g.combo = 0; snd.play('click'); closeOv(); release(); refresh(); }
+/** Stop the clock while an end-of-moves card is up; release() restarts it. */
+function hold() { if (g && !g.pausedAt) g.pausedAt = Date.now(); }
+function release() { if (g && g.pausedAt) { g.paused += Date.now() - g.pausedAt; g.pausedAt = 0; } }
 function doHint() { if (!g || g.over || (g.hints >= g.level.hints && g.level.mode !== 'zen')) return; const x = findHint(g.tiles); if (!x) return; g.hints++; g.idle = Date.now(); g.sel = null; refresh(); x.forEach((t) => g!.els[t.id].classList.add('hint')); snd.play('hint'); }
-function doShuffle() { if (!g || (g.shuffles >= g.level.shuffles && g.level.mode !== 'zen')) return; g.shuffles++; reshuffle(g.tiles, g.level.seed + g.shuffles * 7919 + g.history.length); g.history = []; g.sel = null; snd.play('shuffle'); g.els.forEach((d) => { d.classList.remove('flip'); void d.offsetWidth; d.classList.add('flip'); }); closeOv(); refresh(); toast('Tuiles mélangées'); }
+/** Shuffle the remaining faces. A shuffle is only spent when it worked; when no arrangement can clear the board, the end card explains it.
+ * Undo history is kept: a removed pair still matches after a shuffle, so undoing stays valid. */
+function doShuffle() {
+  if (!g || g.over || (g.shuffles >= g.level.shuffles && g.level.mode !== 'zen')) return;
+  const left = g.tiles.filter((t) => !t.removed).length;
+  const res = reshuffle(g.tiles, (g.level.seed + (g.shuffles + 1) * 7919 + left * 131 + g.undos) >>> 0);
+  if (res === 'dead') { snd.play('invalid'); noMoves(true); return; }
+  g.shuffles++; g.sel = null; g.idle = Date.now(); snd.play('shuffle'); g.els.forEach((d) => { d.classList.remove('flip'); void d.offsetWidth; d.classList.add('flip'); }); closeOv(); release(); refresh(); toast('Tuiles mélangées');
+}
 $('g-hint').onclick = doHint; $('g-undo').onclick = doUndo; $('g-shuf').onclick = doShuffle; $('g-pause').onclick = () => pause();
-addEventListener('keydown', (e) => { if (view !== 'game') return; if (e.key === 'h') doHint(); if (e.key === 'z' || (e.key === 'z' && e.ctrlKey)) doUndo(); if (e.key === 'Escape') pause(); });
+addEventListener('keydown', (e) => {
+  if (view !== 'game' || !g) return;
+  const ovOpen = $('ov').classList.contains('show');
+  if (e.key === 'Escape') { if (!ovOpen) pause(); else if ($('card').classList.contains('pause')) resume(); return; }
+  if (ovOpen || g.pausedAt || e.repeat || e.altKey || e.metaKey) return; // no shortcuts behind a card or while paused
+  const k = e.key.toLowerCase(); if (k === 'h') doHint(); else if (k === 'z') doUndo(); else if (k === 's') doShuffle();
+});
 document.addEventListener('visibilitychange', () => { if (document.hidden && view === 'game' && g && !g.over && !g.pausedAt) pause(); });
 
 // ---------- overlays
@@ -416,7 +454,7 @@ function openOv(html: string, cls = '') { const c = $('card'); c.className = `ca
 function closeOv() { $('ov').classList.remove('show'); }
 function pause() {
   if (!g || g.over) return; if (!g.pausedAt) g.pausedAt = Date.now();
-  openOv(`<h2>Pause</h2><p class="ptitle">${g.level.mode === 'level' ? `Niveau ${g.level.n + 1} · ${WORLDS[g.level.world].name} · ${LAYOUTS[g.level.layout].name}` : g.level.title}</p><div class="capy-s">${capySvg('lunettes')}</div><div class="col">
+  openOv(`<h2>Pause</h2><p class="ptitle">${g.level.mode === 'level' ? `Niveau ${g.level.n + 1} · ${WORLDS[g.level.world].name} · ${LAYOUTS[g.level.layout].name}` : esc(g.level.title)}</p><div class="capy-s">${capySvg('lunettes')}</div><div class="col">
     <button class="btn primary" id="p-resume">${ic('play')}<span>Reprendre</span></button>
     <button class="btn" id="p-retry">${ic('retry')}<span>Recommencer</span></button>
     <button class="btn" id="p-settings">${ic('gear')}<span>Réglages</span></button>
@@ -424,7 +462,7 @@ function pause() {
   $('p-resume').onclick = resume; $('p-retry').onclick = () => startPlay(g!.level);
   $('p-settings').onclick = () => settings(pause); $('p-map').onclick = () => leave();
 }
-function resume() { if (!g) return; if (g.pausedAt) { g.paused += Date.now() - g.pausedAt; g.pausedAt = 0; } snd.play('click'); closeOv(); }
+function resume() { if (!g) return; release(); snd.play('click'); closeOv(); }
 function leave() { const m = g?.level.mode ?? 'level'; if (m === 'level') { renderMap(g?.level.world ?? 0); show('map'); } else { renderModes(); show('modes'); } }
 /** Update stats/achievements after a finished board; returns newly earned achievement ids. */
 function record(won: boolean, t: number) {
@@ -482,13 +520,30 @@ function win() {
     if (next) $('w-next').onclick = () => (mode === 'endless' ? startPlay(endlessLevel(lv.round! + 1, endlessSeed)) : mode === 'zen' ? startPlay(zenLevel(newSeed(), lv.diff)) : nextLate ? startPlay(dailyLevel(nextLate, true)) : startLevel(nextN));
   }, 700);
 }
-function noMoves() {
-  if (!g) return; const canShuf = g.shuffles < g.level.shuffles || g.level.mode === 'zen';
+/** No free pair left (or a shuffle proved the board can't be cleared). Always offers a way out: undo, shuffle, restart or quit. */
+function noMoves(knownDead = false) {
+  if (!g || g.over) return;
+  const zen = g.level.mode === 'zen'; const endl = g.level.mode === 'endless';
+  const dead = knownDead || clearable(g.tiles.filter((t) => !t.removed)) === false;
+  const canShuf = !dead && (g.shuffles < g.level.shuffles || zen);
+  const canUndo = g.history.length > 0 && undoLeft() > 0; const hasPair = !!findHint(g.tiles);
+  const undoBtn = `<button class="btn" id="n-undo" ${canUndo ? '' : 'disabled'}>${ic('undo')}<span>Annuler${undoLimited() ? ` (${undoLeft()})` : ''}</span></button>`;
+  const exits = `<div class="row small"><button class="btn" id="n-retry">${ic('retry')}<span>Recommencer</span></button><button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>Quitter</span></button></div>`;
+  hold();
   if (canShuf) openOv(`<h2>Plus de paires</h2><div class="capy-s">${capySvg('bonnet')}</div><p>Aucune paire libre. Mélange les tuiles restantes, ou annule un coup.</p>
-    <div class="row"><button class="btn" id="n-undo" ${g.history.length && undoLeft() > 0 ? '' : 'disabled'}>${ic('undo')}<span>Annuler${undoLimited() ? ` (${undoLeft()})` : ''}</span></button><button class="btn primary" id="n-shuf">${ic('shuffle')}<span>Mélanger${g.level.mode === 'zen' ? '' : ` (${g.level.shuffles - g.shuffles})`}</span></button></div>`, 'lose');
-  else { g.over = true; snd.play('lose'); record(false, elapsed()); const endl = g.level.mode === 'endless'; openOv(`<h2>${endl ? 'Fin de la course' : 'Perdu…'}</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>${endl ? `Plus de paires possibles. Manches réussies : <b>${g.level.round}</b> · Record : <b>${S.stats.endlessBest}</b>` : 'Plus de paires et plus de mélanges. Le capybara t\'attend pour réessayer !'}</p>
-    <div class="row"><button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>${g.level.mode === 'level' ? 'Niveaux' : 'Modes'}</span></button><button class="btn primary" id="n-retry">${ic('retry')}<span>${endl ? 'Nouvelle course' : 'Réessayer'}</span></button></div>`, 'lose'); }
-  if (canShuf) { $('n-shuf').onclick = doShuffle; $('n-undo').onclick = doUndo; } else { $('n-retry').onclick = () => (g!.level.mode === 'endless' ? startPlay(endlessLevel(0, (endlessSeed = (Math.random() * 2 ** 31) >>> 0))) : startPlay(g!.level)); $('n-map').onclick = () => leave(); }
+    <div class="row">${undoBtn}<button class="btn primary" id="n-shuf">${ic('shuffle')}<span>Mélanger${zen ? '' : ` (${g.level.shuffles - g.shuffles})`}</span></button></div>${exits}`, 'lose');
+  else if (dead && (canUndo || hasPair)) openOv(`<h2>Tuiles coincées</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>Même mélangées, les tuiles restantes ne pourront plus toutes partir (elles sont empilées). Ton mélange n'a pas été utilisé.</p>
+    <div class="row">${canUndo ? undoBtn : ''}${hasPair ? `<button class="btn" id="n-cont">${ic('play')}<span>Continuer</span></button>` : ''}</div>${exits}`, 'lose');
+  else {
+    g.over = true; snd.play('lose'); record(false, elapsed());
+    openOv(`<h2>${endl ? 'Fin de la course' : 'Perdu…'}</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>${endl ? `Plus de paires possibles. Manche${(g.level.round ?? 0) > 1 ? 's' : ''} réussie${(g.level.round ?? 0) > 1 ? 's' : ''} : <b>${g.level.round}</b> · Record : <b>${S.stats.endlessBest}</b>` : dead ? 'Les tuiles restantes sont coincées : impossible de vider le plateau. Le capybara t\'attend pour réessayer !' : 'Plus de paires et plus de mélanges. Le capybara t\'attend pour réessayer !'}</p>
+    <div class="row"><button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>${g.level.mode === 'level' ? 'Niveaux' : 'Modes'}</span></button><button class="btn primary" id="n-retry">${ic('retry')}<span>${endl ? 'Nouvelle course' : 'Réessayer'}</span></button></div>`, 'lose');
+  }
+  const q = (id: string) => document.getElementById(id);
+  q('n-shuf')?.addEventListener('click', doShuffle); q('n-undo')?.addEventListener('click', doUndo);
+  q('n-cont')?.addEventListener('click', () => { snd.play('click'); closeOv(); release(); if (g) g.idle = Date.now(); });
+  q('n-retry')!.onclick = () => { snd.play('click'); if (g!.level.mode === 'endless') startPlay(endlessLevel(0, (endlessSeed = newSeed()))); else startPlay(g!.level); };
+  q('n-map')!.onclick = () => { snd.play('click'); if (g && !g.over) { g.over = true; record(false, elapsed()); } leave(); };
 }
 function settings(back?: () => void) {
   const row = (id: string, label: string, on: boolean) => `<label class="set"><span>${label}</span><button class="sw ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${on}"><i></i></button></label>`;
@@ -519,18 +574,38 @@ function howTo(then?: () => void) {
   next: () => { if (!g) return null; const p = g.solution.find(([a]) => !g!.tiles[a].removed); return p ?? null; },
   stuck: () => { if (!g) return; g.shuffles = g.level.shuffles; noMoves(); },
   solveAll: () => { if (!g) return; for (const [a, b] of g.solution) { if (g.tiles[a].removed) continue; tap(g.tiles[a]); tap(g.tiles[b]); } },
-  playPairs: (n: number) => { if (!g) return; let k = 0; for (const [a, b] of g.solution) { if (k >= n) break; if (g.tiles[a].removed) continue; tap(g.tiles[a]); tap(g.tiles[b]); k++; } },
+  playPairs: (n: number) => { // follows the deal's solution; after a shuffle (faces changed) falls back to any free pair
+    for (let k = 0; k < n && g && !g.over; k++) {
+      const live = g.tiles.filter((t) => !t.removed); const ok = ([a, b]: [number, number]) => !g!.tiles[a].removed && !g!.tiles[b].removed && isFree(g!.tiles[a], live) && isFree(g!.tiles[b], live) && matches(g!.tiles[a].kind, g!.tiles[b].kind);
+      const p = g.solution.find(ok); const h = p ? [g.tiles[p[0]], g.tiles[p[1]]] : findHint(g.tiles); if (!h) return; tap(h[0]); tap(h[1]);
+    }
+  },
   legend: () => g && g.tiles.filter((t) => t.kind === 'capydindon' && !t.removed).map((t) => t.id),
   select: (n: number) => { if (!g) return; const x = findHint(g.tiles); if (x && n) tap(x[0]); },
+  tapPairs: (ps: [number, number][]) => { if (!g) return; for (const [a, b] of ps) { tap(g.tiles[a]); tap(g.tiles[b]); } },
+  counters: () => g && { shuffles: g.shuffles, history: g.history.length, paused: !!g.pausedAt },
+  audio: () => snd.ctx?.state ?? 'none',
 };
 
 // ---------- boot
 document.body.dataset.bg = S.bg; renderHome(); setWorld(0); show('home');
-const deep = new URLSearchParams(location.search);
-if (deep.has('level')) startLevel(Math.min(LEVELS.length - 1, +deep.get('level')!));
-else if (deep.get('mode') === 'daily') { const k = deep.get('day'); startPlay(k && /^\d{4}-\d\d-\d\d$/.test(k) && k < dayKey() ? dailyLevel(k, true) : dailyLevel()); }
-else if (deep.get('mode') === 'zen') { const z = zenLevel(+(deep.get('seed') ?? 1), (DIFFS.some((d) => d.id === deep.get('diff')) ? deep.get('diff') as Diff : 'moyen')); const lay = deep.get('layout'); startPlay(lay && LAYOUTS[lay] ? { ...z, layout: lay, title: `Zen · ${LAYOUTS[lay].name}`, legend: deep.has('legend') ? 1 : z.legend } : z); }
-else if (deep.get('mode') === 'endless') startPlay(endlessLevel(+(deep.get('round') ?? 0), endlessSeed));
+const { deep, bad } = parseDeep(location.search);
+if (location.search) history.replaceState(null, '', location.pathname); // a reload returns home (with "Reprendre") instead of restarting the link
+if (deep?.kind === 'level') {
+  if (unlocked(S, deep.n)) startLevel(deep.n); // level 1 for a newcomer still gets the first-game coach
+  else { const last = Math.max(0, LEVELS.findIndex((l) => !unlocked(S, l.n)) - 1); renderMap(LEVELS[last].world); show('map'); toast(`Le niveau ${deep.n + 1} n'est pas encore débloqué : termine d'abord les précédents !`, 3000); }
+} else if (deep?.kind === 'daily') {
+  const today = dayKey(); const k = deep.day;
+  if (k && k < today && canReplay(S.stats, k, today)) startPlay(dailyLevel(k, true));
+  else { startPlay(dailyLevel(today)); if (k && k !== today) toast('Ce défi ne peut pas être rattrapé : voici celui du jour', 3000); }
+} else if (deep?.kind === 'zen') {
+  const z = zenLevel(deep.seed, deep.diff); const lay = deep.layout;
+  startPlay(lay ? { ...z, layout: lay, title: `Zen · ${LAYOUTS[lay].name}`, legend: deep.legend ? 1 : z.legend } : z);
+} else if (deep?.kind === 'endless') { endlessSeed = newSeed(); startPlay(endlessLevel(0, endlessSeed)); }
+if (bad) setTimeout(() => toast('Lien invalide : retour à l\'accueil', 2500), 300);
+if (LOADED.status === 'backup') setTimeout(() => toast('Sauvegarde abîmée : ta copie de secours a été restaurée', 4000), 400);
+else if (LOADED.status === 'lost') setTimeout(() => toast('Sauvegarde illisible : elle a été mise de côté, nouvelle partie', 4000), 400);
+booted = true;
 // Home illustration: lazy-loaded after first paint (decoded off the critical path), then faded in.
 const HOME_BG = new URL(`${import.meta.env.BASE_URL}home-bg.webp`, document.baseURI).href;
 const loadHomeBg = () => { const im = new Image(); im.decoding = 'async'; im.src = HOME_BG; im.decode().then(() => { document.documentElement.style.setProperty('--home-bg', `url("${HOME_BG}")`); document.body.classList.add('home-art'); }).catch(() => {}); };

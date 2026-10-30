@@ -10,7 +10,8 @@ export const NEW_STATS = (): Stats => ({ played: 0, won: 0, pairs: 0, seconds: 0
 
 /** FNV-1a string hash → 32-bit seed */
 export const hash = (s: string) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
-export const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+import { dayKey, addDays } from './dates';
+export { dayKey };
 const prevDay = (k: string) => { const [y, m, d] = k.split('-').map(Number); return dayKey(new Date(y, m - 1, d - 1)); };
 
 const DAILY_LAYOUTS = ['pyramide', 'fleur', 'papillon', 'forteresse', 'montagne', 'tortue', 'coeur', 'chat', 'ours', 'etoile', 'champignon', 'capy'];
@@ -57,7 +58,6 @@ export function recordDaily(s: Stats, key: string) {
 }
 /** How far back missed dailies can be replayed from the calendar. */
 export const REPLAY_DAYS = 30;
-const addDays = (k: string, n: number) => { const [y, m, d] = k.split('-').map(Number); return dayKey(new Date(y, m - 1, d + n)); };
 /** Past days (newest first, within REPLAY_DAYS) whose daily was neither won on the day nor replayed. */
 export function missedDays(s: Stats, today = dayKey(), span = REPLAY_DAYS) {
   const out: string[] = []; for (let i = 1; i <= span; i++) { const k = addDays(today, -i); if (!s.dailyDone.includes(k) && !s.dailyLate.includes(k)) out.push(k); } return out;

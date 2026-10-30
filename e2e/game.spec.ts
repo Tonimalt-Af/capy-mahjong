@@ -61,6 +61,7 @@ test('world map: locked world tabs are disabled', async ({ page }) => {
   await tap(page, '#h-levels'); await expect(page.locator('.tab[data-w="1"]')).toBeDisabled(); await expect(page.locator('.node')).toHaveCount(6);
 });
 test('board fits inside the stage', async ({ page }) => {
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('capy-mahjong-v1')!); s.stars = Object.fromEntries(Array.from({ length: 29 }, (_, i) => [i, 1])); localStorage.setItem('capy-mahjong-v1', JSON.stringify(s)); });
   for (const lv of [0, 10, 29]) {
     await page.goto(`/?level=${lv}`); await page.waitForTimeout(1200);
     const ok = await page.evaluate(() => { const s = document.getElementById('stage')!.getBoundingClientRect(); return [...document.querySelectorAll('.tile')].every((t) => { const r = t.getBoundingClientRect(); return r.left >= s.left - 12 && r.right <= s.right + 12 && r.top >= s.top - 12 && r.bottom <= s.bottom + 12; }); });

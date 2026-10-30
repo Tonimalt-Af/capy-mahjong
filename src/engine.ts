@@ -38,8 +38,8 @@ export function deckPairs(n: number): [string, string][] {
  * Guaranteed-solvable assignment: simulate removing random free pairs from the full layout;
  * playing those removals in order is a valid solution. Returns assignment and that solution.
  */
-export function assignSolvable(positions: Pos[], pairs: [string, string][], r: () => number) {
-  for (let attempt = 0; attempt < 500; attempt++) {
+export function assignSolvable(positions: Pos[], pairs: [string, string][], r: () => number, attempts = 500) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const live = positions.slice();
     const order: [Pos, Pos][] = [];
     let ok = true;
@@ -85,16 +85,61 @@ export function findHint(tiles: Tile[]): [Tile, Tile] | null {
   return null;
 }
 
-/** Reshuffle remaining tiles into a solvable arrangement (keeps positions, re-pairs kinds). */
-export function reshuffle(tiles: Tile[], seed: number) {
+/**
+ * Can these positions be fully cleared by *some* pairing, whatever the faces? (kinds ignored: any two free tiles
+ * may pair). true = yes, false = provably impossible (e.g. a 3-high stack plus one loose tile), null = unknown (search limit).
+ */
+export function clearable(live: Pos[], r: () => number = rng(1), limit = 200_000): boolean | null {
+  if (live.length % 2) return false;
+  if (!live.length) return true;
+  // a stack of h tiles at one spot is removed top-down, each with a partner from elsewhere: needs h tiles outside it
+  const col = new Map<string, number[]>(); for (const p of live) { const k = `${p.x},${p.y}`; (col.get(k) ?? col.set(k, []).get(k)!).push(p.z); }
+  for (const zs of col.values()) { const h = zs.length; if (h > live.length - h && Math.max(...zs) - Math.min(...zs) === h - 1) return false; }
+  // fast path: random greedy removals (what assignSolvable does) usually find an order immediately
+  for (let k = 0; k < 30; k++) {
+    const l = live.slice(); let ok = true;
+    while (l.length) { const f = shuffleArr(freeTiles(l), r); if (f.length < 2) { ok = false; break; } const a = f[0]; const b = f.find((x, i) => i > 0 && (x.x !== a.x || x.y !== a.y)) ?? f[1]; l.splice(l.indexOf(a), 1); l.splice(l.indexOf(b), 1); }
+    if (ok) return true;
+  }
+  if (live.length > 28) return null; // too big for an exhaustive proof: unknown
+  // exact search over removal sets (memoised); free tiles of a state are interchangeable for pairing purposes
+  const n = live.length; const gone = new Array<boolean>(n).fill(false); const seen = new Set<string>(); let nodes = 0;
+  const rec = (left: number): boolean => {
+    if (!left) return true;
+    if (++nodes > limit) throw new Error('limit');
+    const key = gone.map((b) => (b ? 1 : 0)).join(''); if (seen.has(key)) return false; seen.add(key);
+    const cur = live.filter((_, i) => !gone[i]); const free = freeTiles(cur).map((p) => live.indexOf(p));
+    if (free.length < 2) return false;
+    for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) { gone[free[i]] = gone[free[j]] = true; if (rec(left - 2)) return true; gone[free[i]] = gone[free[j]] = false; }
+    return false;
+  };
+  try { return rec(n); } catch { return null; }
+}
+
+export type ShuffleResult = 'solvable' | 'pair' | 'dead';
+/**
+ * Reshuffle the remaining faces (positions kept). Never throws and only mutates on success:
+ *  - 'solvable': the new faces admit a full clear;
+ *  - 'pair': a full clear couldn't be found within limits, but at least one free matching pair is guaranteed;
+ *  - 'dead': mathematically impossible to clear the remaining positions (whatever the faces) → caller shows the end screen.
+ */
+export function reshuffle(tiles: Tile[], seed: number): ShuffleResult {
   const live = tiles.filter((t) => !t.removed);
-  // group remaining kinds into matching pairs
   const byGroup = new Map<string, string[]>();
   for (const t of live) { const g = KIND_BY_ID.get(t.kind)!.group; (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(t.kind); }
   const pairs: [string, string][] = [];
   for (const ks of byGroup.values()) for (let i = 0; i + 1 < ks.length; i += 2) pairs.push([ks[i], ks[i + 1]]);
-  const { kind } = assignSolvable(live, pairs, rng(seed));
-  for (const t of live) t.kind = kind.get(t)!;
+  if (pairs.length * 2 !== live.length) return 'dead'; // inconsistent faces: should never happen
+  const r = rng(seed);
+  try { const { kind } = assignSolvable(live, pairs, r, Math.max(20, Math.ceil(3000 / live.length))); for (const t of live) t.kind = kind.get(t)!; return 'solvable'; } catch { /* greedy search failed */ }
+  const c = clearable(live, r);
+  if (c === false) return 'dead';
+  const free = freeTiles(live); if (free.length < 2) return 'dead';
+  // fallback: random faces, but force one free matching pair so the player always has a move
+  const flat = shuffleArr(pairs.slice(), r); const [a, b] = shuffleArr(free.slice(), r);
+  const rest = live.filter((t) => t !== a && t !== b); const kinds = shuffleArr(flat.slice(1).flat(), r);
+  a.kind = flat[0][0]; b.kind = flat[0][1]; rest.forEach((t, i) => { t.kind = kinds[i]; });
+  return 'pair';
 }
 
 /** Exact DFS solver with memo; returns a solution or null. Limit nodes for safety. */

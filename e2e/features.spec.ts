@@ -4,6 +4,8 @@ type W = { __game: { state: () => St | null; solveAll: () => void; playPairs: (n
 const G = (p: Page) => ({ state: () => p.evaluate(() => (window as unknown as W).__game.state()), solve: () => p.evaluate(() => (window as unknown as W).__game.solveAll()), pairs: (n: number) => p.evaluate((n) => (window as unknown as W).__game.playPairs(n), n) });
 const saveOf = (p: Page) => p.evaluate(() => JSON.parse(localStorage.getItem('capy-mahjong-v1')!));
 const tap = async (p: Page, sel: string) => { const l = p.locator(sel); if (test.info().project.name.startsWith('mobile')) await l.tap(); else await l.click(); };
+/** Stars on levels 1–29: every level unlocked (deep links to locked levels open the map instead). */
+const OPEN = { stars: Object.fromEntries(Array.from({ length: 29 }, (_, i) => [i, 1])) };
 const seed = (p: Page, extra: object = {}) => p.addInitScript((e) => { if (!sessionStorage.k) { localStorage.setItem('capy-mahjong-v1', JSON.stringify({ stars: {}, best: {}, settings: { sfx: false, music: false, dim: true, vibrate: false }, seenHowTo: true, ...e })); sessionStorage.k = '1'; } }, extra);
 
 test.beforeEach(async ({ page }) => { const errs: string[] = []; page.on('pageerror', (e) => errs.push(e.message)); (page as unknown as { errs: string[] }).errs = errs; });
@@ -41,7 +43,7 @@ test('zen: no timer/score, unlimited hints & shuffles', async ({ page }) => {
   expect((await saveOf(page)).stats.zenWon).toBe(1);
 });
 test('combo indicator lives in the HUD, never over the board', async ({ page }) => {
-  await seed(page); await page.goto('/?level=6'); await G(page).pairs(4);
+  await seed(page, OPEN); await page.goto('/?level=6'); await G(page).pairs(4);
   const c = page.locator('#g-combo'); await expect(c).toBeVisible(); await expect(c).toContainText('Combo ×');
   await c.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished))); // measure at rest, not mid-bump
   const [cb, sb] = [await c.boundingBox(), await page.locator('#stage').boundingBox()];
@@ -96,19 +98,19 @@ test('zen difficulty picker: Expert gives a big board, choice is remembered', as
   await expect(page.locator('#g-lvl')).toContainText('Expert'); expect((await saveOf(page)).diff).toBe('expert');
 });
 test('match highlighting is off by default (old saves migrated once), can be turned on in Réglages and stays on', async ({ page }) => {
-  await seed(page, { settings: { sfx: false, music: false, dim: true, vibrate: false, hl: true } }); await page.goto('/?level=3'); await page.waitForTimeout(900);
+  await seed(page, { ...OPEN, settings: { sfx: false, music: false, dim: true, vibrate: false, hl: true } }); await page.goto('/?level=3'); await page.waitForTimeout(900);
   type S2 = { __game: { select: (n: number) => void } };
   await page.evaluate(() => (window as unknown as S2).__game.select(1)); await expect(page.locator('.tile.sel')).toHaveCount(1);
   await expect(page.locator('.tile.mate')).toHaveCount(0); await expect(page.locator('body')).toHaveClass(/\bdim\b/); await expect(page.locator('.tile.blocked').first()).toBeVisible(); // dimming unchanged
   await tap(page, '#g-pause'); await tap(page, '#p-settings'); await expect(page.locator('#s-hl')).toHaveAttribute('aria-checked', 'false');
   await tap(page, '#s-hl'); await tap(page, '#s-ok'); await tap(page, '#p-resume').catch(() => {});
   expect((await saveOf(page)).settings).toMatchObject({ hl: true, v: 2 });
-  await page.reload(); await page.waitForTimeout(900);
+  await page.reload(); await tap(page, '#h-play'); await page.waitForTimeout(900); // the link is cleaned from the URL: reload → home → Reprendre
   await page.evaluate(() => (window as unknown as S2).__game.select(1)); await expect(page.locator('.tile.mate').first()).toBeVisible();
   expect((await saveOf(page)).settings.hl).toBe(true);
 });
 test('auto-hint (opt-in) nudges a pair after 20 s idle, without spending a hint', async ({ page }) => {
-  await page.clock.install(); await seed(page, { settings: { sfx: false, music: false, dim: true, vibrate: false, hl: true, autohint: true } }); await page.goto('/?level=2');
+  await page.clock.install(); await seed(page, { ...OPEN, settings: { sfx: false, music: false, dim: true, vibrate: false, hl: true, autohint: true } }); await page.goto('/?level=2');
   await page.clock.fastForward(22000); await expect(page.locator('.tile.nudge')).toHaveCount(2);
   await expect(page.locator('#g-hint-n')).toHaveText('4');
 });
@@ -131,7 +133,7 @@ test('real taps clear a whole level (no test hooks for input)', async ({ page })
 });
 
 test('resume: an interrupted game is saved after every move and resumed from the home screen', async ({ page }) => {
-  await seed(page); await page.goto('/?level=3'); await G(page).pairs(3);
+  await seed(page, OPEN); await page.goto('/?level=3'); await G(page).pairs(3);
   const before = (await G(page).state())!.left;
   await page.goto('/'); await expect(page.locator('#h-play')).toContainText('Reprendre'); await expect(page.locator('#h-play')).toContainText('Niveau 4');
   await tap(page, '#h-play'); await expect(page.locator('.toast')).toContainText('Partie reprise');
@@ -197,7 +199,7 @@ test('calendar: shown in Stats too, with month navigation; old days out of the w
 });
 test('undo budget: HUD shows ∞ in the first world and zen, a counter elsewhere that blocks at 0', async ({ page }) => {
   test.setTimeout(60_000);
-  await seed(page); await page.goto('/?level=0'); await expect(page.locator('#g-undo-n')).toHaveText('∞');
+  await seed(page, OPEN); await page.goto('/?level=0'); await expect(page.locator('#g-undo-n')).toHaveText('∞');
   await page.goto('/?mode=zen&seed=3'); await expect(page.locator('#g-undo-n')).toHaveText('∞');
   await page.goto('/?level=20'); await expect(page.locator('#g-undo-n')).toHaveText('3'); await expect(page.locator('#g-undo')).toBeDisabled();
   for (let i = 0; i < 3; i++) { await page.waitForTimeout(4100); await G(page).pairs(1); await tap(page, '#g-undo'); }
@@ -206,14 +208,14 @@ test('undo budget: HUD shows ∞ in the first world and zen, a counter elsewhere
   await page.goto('/'); await tap(page, '#h-play'); await expect(page.locator('#g-undo-n')).toHaveText('0'); // budget survives resume
 });
 test('undo budget: a ×4 combo earns one extra undo', async ({ page }) => {
-  await seed(page); await page.goto('/?level=20'); await expect(page.locator('#g-undo-n')).toHaveText('3');
+  await seed(page, OPEN); await page.goto('/?level=20'); await expect(page.locator('#g-undo-n')).toHaveText('3');
   await G(page).pairs(4); await expect(page.locator('#g-undo-n')).toHaveText('4'); await expect(page.locator('.pop', { hasText: '+1 annulation' })).toHaveCount(1);
 });
 
 const box = async (p: Page, sel: string) => (await p.locator(sel).boundingBox())!;
 const overlaps = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 test('game HUD music button: big enough, never over the board or other HUD items (844x390, 667x375, desktop)', async ({ page }) => {
-  await seed(page, { settings: { sfx: false, music: true, musicVol: 0.3, dim: true, vibrate: false } });
+  await seed(page, { ...OPEN, settings: { sfx: false, music: true, musicVol: 0.3, dim: true, vibrate: false } });
   const sizes = test.info().project.name.startsWith('mobile') ? [{ width: 844, height: 390 }, { width: 667, height: 375 }] : [{ width: 1440, height: 900 }, { width: 1024, height: 640 }];
   for (const vp of sizes) {
     await page.setViewportSize(vp); await page.goto('/?level=6'); await G(page).pairs(4); await expect(page.locator('#g-combo')).toBeVisible();
@@ -231,7 +233,7 @@ test('music button: one tap mutes / unmutes music, keeps the chosen volume, pers
   await tap(page, '#g-music'); await expect(page.locator('#g-music')).toHaveAttribute('aria-label', 'Remettre la musique'); await expect(page.locator('#g-music')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#toast')).toHaveText('Musique coupée');
   let st = (await saveOf(page)).settings; expect(st.music).toBe(false); expect(st.musicVol).toBeCloseTo(0.3); expect(st.sfx).toBe(false);
-  await page.reload(); await expect(page.locator('#g-music')).toHaveAttribute('aria-label', 'Remettre la musique');
+  await page.reload(); await tap(page, '#h-play'); await expect(page.locator('#g-music')).toHaveAttribute('aria-label', 'Remettre la musique');
   // settings toggle reflects it, and turning music on there updates the HUD button
   await tap(page, '#g-pause'); await tap(page, '#p-settings'); await expect(page.locator('#s-music')).toHaveAttribute('aria-checked', 'false');
   await expect(page.locator('#v-music')).toHaveValue('30');
