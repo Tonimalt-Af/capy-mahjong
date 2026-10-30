@@ -1,6 +1,6 @@
 // All audio is synthesized at runtime with the Web Audio API: original, no samples, no third-party licences.
-// Mix: music (EP, bass, soft drums, mallet melody, vinyl) and SFX each go through their own tone-shaping and volume,
-// then a gentle glue compressor and a brick-wall limiter so stacked combos never clip. Sub-bass is filtered out of
+// Mix: music (EP, bass, soft drums, mallet melody; no noise layer) and SFX each go through their own tone-shaping and volume,
+// then a clean trim and a safety limiter (peaks only) so stacked combos never clip. Sub-bass is filtered out of
 // the music: phone speakers cannot reproduce it and turn it into buzz/distortion when the volume is turned up.
 export type Sfx = 'legend' | 'buy' | 'unlock' | 'select' | 'match' | 'invalid' | 'shuffle' | 'hint' | 'win' | 'star' | 'click' | 'lose';
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
@@ -28,26 +28,27 @@ export const SONGS: Song[] = [
 const PENTA = [0, 2, 4, 7, 9];
 const RHY = [[0, 3, 6], [1, 4], [0, 2, 5], [3, 4, 6], [2, 6], [0, 5]];
 
-/** Default volumes (0..1 sliders). Gains follow v² (perceptual) times a calibrated ceiling. */
+/** Default volumes (0..1 sliders). Gains follow v^1.5 (perceptual) times a calibrated ceiling. */
+const TRIM = 1.8;
 export const DEFAULT_MUSIC = 0.45, DEFAULT_SFX = 0.6;
-const MUSIC_MAX = 0.75, SFX_MAX = 0.76;
+const MUSIC_MAX = 0.38, SFX_MAX = 0.52; // slider 100% = MAX; defaults land where the mix was tuned
 
 export class Sound {
   ctx: AudioContext | null = null;
   sfxOn = true; musicOn = true; musicVol = DEFAULT_MUSIC; sfxVol = DEFAULT_SFX;
   private mix!: GainNode; private sfxBus!: GainNode; private sfxVolG!: GainNode; private musicIn!: GainNode; private musicVolG!: GainNode; private fade!: GainNode;
-  private epBus!: GainNode; private bassBus!: GainNode; private echo!: GainNode; private noise!: AudioBuffer; private vinyl!: AudioBuffer; private crackle: AudioBufferSourceNode | null = null;
+  private epBus!: GainNode; private bassBus!: GainNode; private echo!: GainNode; private noise!: AudioBuffer; // noise is only used by short SFX (select, buy, shuffle), never by the music
   private timer = 0; private world = -1; private next = 0; private step = 0; private r = rng(1); private lastMel = 0;
   ensure() {
     if (this.ctx) { if (this.ctx.state === 'suspended') void this.ctx.resume(); return this.ctx; }
     const C = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!C) return null;
     const ctx = (this.ctx = new C());
-    // master: glue compressor -> limiter -> trim
-    const glue = ctx.createDynamicsCompressor(); glue.threshold.value = -22; glue.knee.value = 14; glue.ratio.value = 2.5; glue.attack.value = 0.02; glue.release.value = 0.3;
-    const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -9; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.15;
-    const trim = ctx.createGain(); trim.gain.value = 0.7;
-    this.mix = ctx.createGain(); this.mix.connect(glue).connect(lim).connect(trim).connect(ctx.destination);
+    // master: clean gain staging + a safety limiter that only touches rare peaks (no glue compressor: the Web Audio
+    // compressor adds automatic make-up gain, which lifted the quiet tails and pumped the floor up)
+    const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 2; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.25;
+    const trim = ctx.createGain(); trim.gain.value = TRIM;
+    this.mix = ctx.createGain(); this.mix.connect(trim).connect(lim).connect(ctx.destination);
     document.addEventListener('visibilitychange', () => { if (document.hidden) void ctx.suspend(); else void ctx.resume(); });
     // SFX: soften transients (low-pass), user volume
     this.sfxVolG = ctx.createGain(); this.sfxVolG.connect(this.mix);
@@ -69,15 +70,12 @@ export class Sound {
     this.echo = ctx.createGain(); this.echo.gain.value = 0.22; this.echo.connect(dl); dl.connect(eLp).connect(fb).connect(dl); eLp.connect(this.musicIn); (this.echo as unknown as { d: DelayNode }).d = dl;
     const R = rng(7); const n = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, n, ctx.sampleRate); const d = this.noise.getChannelData(0); for (let i = 0; i < n; i++) d[i] = R() * 2 - 1;
-    // vinyl: sparse soft clicks + faint hiss, looped
-    this.vinyl = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate); const v = this.vinyl.getChannelData(0); let lp1 = 0;
-    for (let i = 0; i < v.length; i++) { const click = R() < 0.00035 ? (R() * 2 - 1) * (0.4 + R() * 0.6) : 0; lp1 += 0.35 * ((R() * 2 - 1) * 0.012 + click - lp1); v[i] = lp1; }
     this.setVolumes(this.musicVol, this.sfxVol);
     return ctx;
   }
   setVolumes(music: number, sfx: number) {
     this.musicVol = music; this.sfxVol = sfx; if (!this.ctx) return; const t = this.ctx.currentTime;
-    this.musicVolG.gain.setTargetAtTime(music * music * MUSIC_MAX, t, 0.05); this.sfxVolG.gain.setTargetAtTime(sfx * sfx * SFX_MAX, t, 0.02);
+    this.musicVolG.gain.setTargetAtTime(music ** 1.5 * MUSIC_MAX, t, 0.05); this.sfxVolG.gain.setTargetAtTime(sfx ** 1.5 * SFX_MAX, t, 0.02); // perceptual curve
   }
   // ---------- primitives
   private env(g: GainNode, t: number, a: number, peak: number, tau: number, end: number) {
@@ -121,13 +119,11 @@ export class Sound {
     this.next = start; this.step = 0; this.r = rng(1000 + world); this.lastMel = 72 + SONGS[world].key;
     const spb = 60 / SONGS[world].bpm / 2; (this.echo as unknown as { d: DelayNode }).d.delayTime.setValueAtTime(spb * 3, start);
     this.fade.gain.cancelScheduledValues(start); this.fade.gain.setValueAtTime(0, start); this.fade.gain.linearRampToValueAtTime(1, start + 2.5);
-    const c = (this.crackle = ctx.createBufferSource()); c.buffer = this.vinyl; c.loop = true; const cg = ctx.createGain(); cg.gain.value = 0.5; c.connect(cg).connect(this.musicIn); c.start(start);
     this.timer = window.setInterval(() => this.schedule(), 100);
   }
   stopMusic() {
     clearInterval(this.timer); this.timer = 0; if (!this.ctx) return; const t = this.ctx.currentTime;
     this.fade.gain.cancelScheduledValues(t); this.fade.gain.setValueAtTime(this.fade.gain.value, t); this.fade.gain.linearRampToValueAtTime(0, t + 0.4);
-    if (this.crackle) { this.crackle.stop(t + 0.45); this.crackle = null; }
   }
   setMusic(on: boolean) { this.musicOn = on; if (!on) this.stopMusic(); else if (this.world >= 0) { const w = this.world; this.world = -1; this.music(w); } }
   private schedule() {
@@ -151,9 +147,9 @@ export class Sound {
       // drums: boom-bap, brushed snare, low hats; breakdown = hats only
       if (!breakdown && !intro) {
         if (beat === 0 || (beat === 5 && this.r() < 0.8)) this.kick(t, beat === 0 ? 0.26 : 0.19);
-        if (beat === 2 || beat === 6) this.snare(t, 0.55 + this.r() * 0.1);
+        if (beat === 2 || beat === 6) this.snare(t, 0.2 + this.r() * 0.03);
       }
-      if (!intro || beat % 2 === 0) this.hat(t, (beat % 2 ? 0.12 : 0.17) * (breakdown ? 0.6 : 1) * (0.8 + this.r() * 0.4));
+      if (!intro && beat % 2 === 1 && (!breakdown || beat === 3 || beat === 7)) this.hat(t, 0.035 * (0.8 + this.r() * 0.4));
       // mallet melody in sections B, A' and C (sparser in breakdown)
       if (sec > 0 && beat === 0) this.melodyBar(S, ch, t, spb, breakdown);
       this.next += spb; this.step++;
@@ -173,7 +169,7 @@ export class Sound {
   // ---------- instruments
   private ep(f: number, t: number, dur: number, vel: number, i: number) { // FM Rhodes-like tine
     const ctx = this.ctx!; const car = ctx.createOscillator(); const mod = ctx.createOscillator(); const mg = ctx.createGain(); const g = ctx.createGain(); const p = ctx.createStereoPanner();
-    car.frequency.value = f; mod.frequency.value = f; mg.gain.setValueAtTime(f * 1.6, t); mg.gain.setTargetAtTime(f * 0.35, t, 0.3);
+    car.frequency.value = f; mod.frequency.value = f; mg.gain.setValueAtTime(f * 1.1, t); mg.gain.setTargetAtTime(f * 0.22, t, 0.25);
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.008); g.gain.setTargetAtTime(vel * 0.4, t + 0.008, 0.6); g.gain.setTargetAtTime(0, t + dur, 0.2);
     p.pan.value = (i - 1.5) * 0.18; mod.connect(mg).connect(car.frequency); car.connect(g).connect(p).connect(this.epBus);
     const tine = ctx.createOscillator(); const tg = ctx.createGain(); tine.frequency.value = f * 4; this.env(tg, t, 0.003, vel * 0.12, 0.06, t + 0.5); tine.connect(tg).connect(p);
@@ -190,13 +186,16 @@ export class Sound {
   private kick(t: number, vel: number) {
     const ctx = this.ctx!; const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(58, t + 0.09);
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.005); g.gain.setTargetAtTime(0, t + 0.005, 0.07); o.connect(g).connect(this.musicIn); o.start(t); o.stop(t + 0.5);
-    this.burst(this.musicIn, t, 0.02, vel * 0.08, 900, 'lowpass', 0.5, 0.001); // soft beater
+  }
+  // drums are pitched (sine partials), no noise: a soft woody rim click and a tiny closed-hat tick
+  private ping(f: number, t: number, vel: number, tau: number, a = 0.002) {
+    const ctx = this.ctx!; const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.value = f; this.env(g, t, a, vel, tau, t + tau * 7); o.connect(g).connect(this.musicIn); o.start(t); o.stop(t + tau * 7);
   }
   private snare(t: number, vel: number) {
-    this.burst(this.musicIn, t, 0.16, vel, 1900, 'bandpass', 0.6, 0.004);
-    const ctx = this.ctx!; const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(200, t); o.frequency.exponentialRampToValueAtTime(160, t + 0.05); const g = ctx.createGain(); this.env(g, t, 0.003, vel * 0.5, 0.025, t + 0.2); o.connect(g).connect(this.musicIn); o.start(t); o.stop(t + 0.2);
+    const ctx = this.ctx!; const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(210, t); o.frequency.exponentialRampToValueAtTime(165, t + 0.06); const g = ctx.createGain(); this.env(g, t, 0.004, vel, 0.035, t + 0.25); o.connect(g).connect(this.musicIn); o.start(t); o.stop(t + 0.25);
+    this.ping(1180, t, vel * 0.35, 0.018, 0.003); this.ping(1730, t, vel * 0.22, 0.014, 0.003);
   }
-  private hat(t: number, vel: number) { this.burst(this.musicIn, t, 0.04, vel, 4200, 'highpass', 0.5, 0.002); }
+  private hat(t: number, vel: number) { this.ping(5300, t, vel, 0.009); this.ping(3700, t, vel * 0.5, 0.007); }
   private mallet(f: number, t: number, dur: number, vel: number) {
     const ctx = this.ctx!; const o = ctx.createOscillator(); const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f; o.frequency.value = f; const g2 = ctx.createGain(); g2.gain.value = 0.25;
     const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.02); g.gain.setTargetAtTime(vel * 0.45, t + 0.02, 0.25); g.gain.setTargetAtTime(0, t + dur, 0.12);
