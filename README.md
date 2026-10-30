@@ -32,3 +32,8 @@ npm run build      # dist/ + service worker
 3. Le workflow `.github/workflows/deploy.yml` teste, build et publie. URL : `https://<user>.github.io/<repo>/` (chemins relatifs, aucun réglage de base nécessaire).
 
 Liens directs : `?level=N` (0–29), `?mode=daily`, `?mode=zen&diff=expert`, `?mode=zen&layout=chat`. Planche artistique : `art.html`.
+
+## Visuels
+- Fond de l'accueil : illustration IA (`assets-src/home-bg.jpg`) convertie en `public/home-bg.webp`, chargée après le premier affichage et mise en cache hors ligne par le service worker.
+- Icônes, favicon et image de partage (`public/og-image.jpg`, 1200×630) : `node scripts/icons.mjs` (mascotte A dessinée en SVG).
+- Aperçus : `previews/` (scripts dans `scripts/mascot/`).

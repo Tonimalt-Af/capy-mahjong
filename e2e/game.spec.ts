@@ -64,5 +64,12 @@ test('PWA: manifest and service worker', async ({ page }) => {
 });
 test('offline: game still loads after first visit', async ({ page, context }) => {
   await page.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration())?.active, null, { timeout: 10000 });
-  await expect(async () => { await page.reload(); expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true); }).toPass({ timeout: 20000 }); await context.setOffline(true); await page.reload(); await expect(page.locator('.logo')).toBeVisible(); await context.setOffline(false);
+  await expect(async () => { await page.reload(); expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true); }).toPass({ timeout: 20000 }); await context.setOffline(true); await page.reload(); await expect(page.locator('.logo')).toBeVisible(); await expect(page.locator('body')).toHaveClass(/home-art/); await context.setOffline(false);
+});
+test('home illustration lazy-loads and share/icon assets exist', async ({ page }) => {
+  await expect(page.locator('body')).toHaveClass(/home-art/, { timeout: 8000 });
+  const bg = await page.evaluate(() => getComputedStyle(document.getElementById('v-home')!, '::before').backgroundImage); expect(bg).toContain('home-bg.webp');
+  const og = await page.locator('meta[property="og:image"]').getAttribute('content'); expect(og).toBe('https://tonimalt-af.github.io/capy-mahjong/og-image.jpg');
+  for (const u of ['/og-image.jpg', '/home-bg.webp', '/icons/favicon-32.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png']) expect((await page.request.get(u)).status(), u).toBe(200);
+  expect(await (await page.request.get('/sw.js')).text()).toContain('home-bg.webp');
 });

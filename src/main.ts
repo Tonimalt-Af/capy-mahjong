@@ -517,4 +517,8 @@ if (deep.has('level')) startLevel(Math.min(LEVELS.length - 1, +deep.get('level')
 else if (deep.get('mode') === 'daily') { const k = deep.get('day'); startPlay(k && /^\d{4}-\d\d-\d\d$/.test(k) && k < dayKey() ? dailyLevel(k, true) : dailyLevel()); }
 else if (deep.get('mode') === 'zen') { const z = zenLevel(+(deep.get('seed') ?? 1), (DIFFS.some((d) => d.id === deep.get('diff')) ? deep.get('diff') as Diff : 'moyen')); const lay = deep.get('layout'); startPlay(lay && LAYOUTS[lay] ? { ...z, layout: lay, title: `Zen · ${LAYOUTS[lay].name}`, legend: deep.has('legend') ? 1 : z.legend } : z); }
 else if (deep.get('mode') === 'endless') startPlay(endlessLevel(+(deep.get('round') ?? 0), endlessSeed));
+// Home illustration: lazy-loaded after first paint (decoded off the critical path), then faded in.
+const HOME_BG = new URL(`${import.meta.env.BASE_URL}home-bg.webp`, document.baseURI).href;
+const loadHomeBg = () => { const im = new Image(); im.decoding = 'async'; im.src = HOME_BG; im.decode().then(() => { document.documentElement.style.setProperty('--home-bg', `url("${HOME_BG}")`); document.body.classList.add('home-art'); }).catch(() => {}); };
+if (document.readyState === 'complete') setTimeout(loadHomeBg, 50); else addEventListener('load', () => setTimeout(loadHomeBg, 50));
 if (import.meta.env.PROD && 'serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));

@@ -43,6 +43,7 @@ test('zen: no timer/score, unlimited hints & shuffles', async ({ page }) => {
 test('combo indicator lives in the HUD, never over the board', async ({ page }) => {
   await seed(page); await page.goto('/?level=6'); await G(page).pairs(4);
   const c = page.locator('#g-combo'); await expect(c).toBeVisible(); await expect(c).toContainText('Combo ×');
+  await c.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished))); // measure at rest, not mid-bump
   const [cb, sb] = [await c.boundingBox(), await page.locator('#stage').boundingBox()];
   const overlap = cb!.x < sb!.x + sb!.width && cb!.x + cb!.width > sb!.x && cb!.y < sb!.y + sb!.height && cb!.y + cb!.height > sb!.y; expect(overlap).toBe(false);
   await expect(page.locator('.toast.show')).toHaveCount(0);

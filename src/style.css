@@ -374,3 +374,15 @@ button.wallet{border:0;font:inherit;color:inherit}
   .btn.calbtn{min-height:34px;padding:4px 10px;font-size:13px}.btn.calbtn .ic{width:16px;height:16px}
   .calnav{width:24px;height:24px;font-size:16px}
 }
+
+/* ===== Phase 7: illustrated home ===== */
+#v-home::before{content:"";position:absolute;inset:0;background:var(--home-bg) 50% 80%/cover no-repeat;opacity:0;transition:opacity .6s ease;pointer-events:none}
+#v-home::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .6s ease;background:radial-gradient(ellipse 58% 70% at 24% 46%,#EAF7F1f0 0%,#EAF7F1cc 50%,#EAF7F100 100%)}
+.home-art #v-home::before,.home-art #v-home::after{opacity:1}
+#v-home>.home{z-index:1}
+.home-art .home-r .pool,.home-art .hero-capy.small,.home-art .hero-steam{display:none}
+.home-art .hero-capy{width:48%;left:8%;bottom:2%}
+.home-art .hero-friend.f-bear{width:19%;left:52%;bottom:-1%}.home-art .hero-friend.f-cat{width:18%;left:-5%;bottom:0}
+.home-art .total{background:#fffc}
+@media (orientation:portrait){#v-home::before{background-position:70% 100%}#v-home::after{background:linear-gradient(180deg,#EAF7F1f2 0%,#EAF7F1cc 55%,#EAF7F100 85%)}}
+@media (prefers-reduced-motion:reduce){#v-home::before,#v-home::after{transition:none}}
