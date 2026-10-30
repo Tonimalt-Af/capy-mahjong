@@ -10,6 +10,8 @@ Mahjong solitaire kawaii, mobile-first (paysage), 30 niveaux / 5 mondes, PWA hor
 - **Carottes** 🥕 : gagnées en jouant (niveaux, défi, infini, zen, succès), dépensées dans la Collection pour des tenues, des jeux de tuiles (Ménagerie, Chats noirs, Oursons) et des fonds de plateau (Nuit étoilée, Sakura, Potiron). Aucun argent réel.
 - **Aides** : paires possibles en surbrillance (désactivable), indice automatique après 20 s (optionnel), tuiles bloquées assombries.
 - Succès, statistiques, calendrier mensuel des défis.
+- **Rattrapage** : un défi manqué (30 derniers jours) se rejoue depuis le calendrier (bouton dans Modes, ou Stats) : +20 carottes, marqué en orange, sans effet sur la série 🔥.
+- **Annulations** : illimitées en Zen et au monde Rivière, 5 aux mondes 2-3, au défi et en Infini, 3 aux mondes 4-5. Un combo ×4 ou le capydindon en redonne une. Compteur sur le bouton Annuler.
 - **Reprendre** : la partie en cours est sauvegardée à chaque coup (appel, appli fermée…) et se reprend depuis l'accueil.
 - **Première partie guidée** : la première paire brille et une main montre où toucher.
 - **Partage** : résultat du défi du jour (étoiles, temps, série, lien direct), « bats mon temps » sur un niveau ou un plateau zen précis, et « Partager le jeu » dans les réglages.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { dailyLevel, endlessLevel, zenLevel, recordDaily, liveStreak, NEW_STATS, dayKey, frDate, OUTFITS, THEMES, BACKS, owns, buy, carrotReward, DIFFS, ACHIEVEMENTS, checkAchievements, hash } from '../src/meta';
-import { LAYOUTS, LEVELS } from '../src/levels';
+import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, NEW_STATS, dayKey, frDate, OUTFITS, THEMES, BACKS, owns, buy, carrotReward, DIFFS, ACHIEVEMENTS, checkAchievements, hash } from '../src/meta';
+import { LAYOUTS, LEVELS, undoBudget } from '../src/levels';
 import { deal, solve, winRate, isFree, matches } from '../src/engine';
 
 describe('daily challenge', () => {
@@ -104,3 +104,42 @@ describe('achievements', () => {
   test('already-owned achievements are never re-reported', () => expect(checkAchievements(ctx({ won: 3 }), ['first'])).toEqual([]));
 });
 test('hash is stable', () => expect(hash('capy')).toBe(hash('capy')));
+
+describe('missed dailies (calendar replay)', () => {
+  const T = '2026-10-30';
+  test('missed days are the past REPLAY_DAYS days not won on the day nor replayed, newest first', () => {
+    const s = { ...NEW_STATS(), dailyDone: ['2026-10-29', '2026-10-27'], dailyLate: ['2026-10-26'] };
+    const m = missedDays(s, T); expect(m.length).toBe(REPLAY_DAYS - 3); expect(m[0]).toBe('2026-10-28'); expect(m).not.toContain(T);
+    expect(m).not.toContain('2026-10-26'); expect(m.at(-1)).toBe('2026-09-30');
+    expect(canReplay(s, '2026-10-28', T)).toBe(true); expect(canReplay(s, '2026-10-29', T)).toBe(false); expect(canReplay(s, '2026-10-31', T)).toBe(false); expect(canReplay(s, '2026-09-29', T)).toBe(false);
+  });
+  test('a replayed day is the very same board, flagged late, and never touches the streak', () => {
+    const late = dailyLevel('2026-10-28', true); const orig = dailyLevel('2026-10-28');
+    expect([late.layout, late.seed, late.late]).toEqual([orig.layout, orig.seed, true]); expect(late.title).toContain('Rattrapage');
+    const s = NEW_STATS(); recordDaily(s, '2026-10-29'); recordDaily(s, '2026-10-30'); expect(s.dailyStreak).toBe(2);
+    recordLate(s, '2026-10-28'); expect(s.dailyLate).toEqual(['2026-10-28']); expect(s.dailyStreak).toBe(2); expect(s.dailyDone).not.toContain('2026-10-28');
+    recordLate(s, '2026-10-28'); recordLate(s, '2026-10-30'); expect(s.dailyLate).toEqual(['2026-10-28']);
+  });
+  test('rewards: late daily pays 20 (+legend), no streak bonus; a day already cleared pays 5', () => {
+    expect(carrotReward({ mode: 'daily', late: true, streak: 7 })).toBe(20);
+    expect(carrotReward({ mode: 'daily', late: true, legend: true })).toBe(45);
+    expect(carrotReward({ mode: 'daily', streak: 1 })).toBe(45);
+    expect(carrotReward({ mode: 'daily', again: true, streak: 7 })).toBe(5);
+    expect(carrotReward({ mode: 'daily', late: true, again: true })).toBe(5);
+  });
+  test('Rattrapage achievement unlocks on the first replayed day', () => {
+    const s = NEW_STATS(); expect(checkAchievements({ stats: s, stars: {}, totalStars: 0 }, [])).not.toContain('late1');
+    recordLate(s, '2026-10-01'); expect(checkAchievements({ stats: s, stars: {}, totalStars: 0 }, [])).toContain('late1');
+  });
+});
+describe('undo budget', () => {
+  test('free in the first world and zen, 5 in worlds 2-3, 3 in worlds 4-5, 5 for daily and endless', () => {
+    expect(LEVELS.slice(0, 6).every((l) => l.undos === -1)).toBe(true);
+    expect(LEVELS.slice(6, 18).every((l) => l.undos === 5)).toBe(true);
+    expect(LEVELS.slice(18).every((l) => l.undos === 3)).toBe(true);
+    expect([undoBudget(0), undoBudget(1), undoBudget(2), undoBudget(3), undoBudget(4)]).toEqual([-1, 5, 5, 3, 3]);
+    for (const d of DIFFS) expect(zenLevel(1, d.id).undos).toBe(-1);
+    expect(dailyLevel('2026-10-30').undos).toBe(5); expect(dailyLevel('2026-10-01', true).undos).toBe(5);
+    for (const r of [0, 3, 9]) expect(endlessLevel(r, 7).undos).toBe(5);
+  });
+});

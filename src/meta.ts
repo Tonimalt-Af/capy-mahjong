@@ -3,10 +3,10 @@ import { LAYOUTS, type Level } from './levels';
 import { fairSeed } from './engine';
 
 export type Mode = 'level' | 'daily' | 'endless' | 'zen';
-export interface PlayLevel extends Level { mode: Mode; title: string; round?: number; date?: string; diff?: Diff; legend: number }
+export interface PlayLevel extends Level { mode: Mode; title: string; round?: number; date?: string; diff?: Diff; legend: number; /** a past daily replayed from the calendar */ late?: boolean }
 
-export interface Stats { played: number; won: number; pairs: number; seconds: number; bestCombo: number; perfect: number; hintsUsed: number; dailyDone: string[]; dailyStreak: number; bestStreak: number; endlessBest: number; zenWon: number; legends: number; carrotsEarned: number; expertWon: number; shapes: number; fastest: number }
-export const NEW_STATS = (): Stats => ({ played: 0, won: 0, pairs: 0, seconds: 0, bestCombo: 0, perfect: 0, hintsUsed: 0, dailyDone: [], dailyStreak: 0, bestStreak: 0, endlessBest: 0, zenWon: 0, legends: 0, carrotsEarned: 0, expertWon: 0, shapes: 0, fastest: 0 });
+export interface Stats { played: number; won: number; pairs: number; seconds: number; bestCombo: number; perfect: number; hintsUsed: number; dailyDone: string[]; dailyLate: string[]; dailyStreak: number; bestStreak: number; endlessBest: number; zenWon: number; legends: number; carrotsEarned: number; expertWon: number; shapes: number; fastest: number }
+export const NEW_STATS = (): Stats => ({ played: 0, won: 0, pairs: 0, seconds: 0, bestCombo: 0, perfect: 0, hintsUsed: 0, dailyDone: [], dailyLate: [], dailyStreak: 0, bestStreak: 0, endlessBest: 0, zenWon: 0, legends: 0, carrotsEarned: 0, expertWon: 0, shapes: 0, fastest: 0 });
 
 /** FNV-1a string hash → 32-bit seed */
 export const hash = (s: string) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
@@ -19,7 +19,7 @@ export const frDate = (k: string) => { const [, m, d] = k.split('-').map(Number)
 
 const mk = (layout: string, seed: number, world: number, extra: Partial<PlayLevel> & { mode: Mode; title: string }, min = 0.4): PlayLevel => {
   const pos = LAYOUTS[layout].make(); const tiles = pos.length;
-  return { n: -1, index: 0, world, layout, seed: fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, legend: 0.25, ...extra };
+  return { n: -1, index: 0, world, layout, seed: fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, undos: 5, legend: 0.25, ...extra };
 };
 /** Chance that the golden capydindon pair hides in a campaign level (deterministic per seed). */
 export const LEVEL_LEGEND = 0.2;
@@ -33,9 +33,9 @@ export const DIFFS: { id: Diff; name: string; pool: string[]; min: number; desc:
   { id: 'expert', name: 'Expert', pool: ['tortue', 'capy', 'montagne', 'etoile'], min: 0, desc: 'Grands plateaux pièges' },
 ];
 /** Same board for everyone on a given day. */
-export function dailyLevel(key = dayKey()): PlayLevel {
+export function dailyLevel(key = dayKey(), late = false): PlayLevel {
   const h = hash('capy-daily-' + key);
-  return mk(DAILY_LAYOUTS[h % DAILY_LAYOUTS.length], h, (h >>> 8) % 5, { mode: 'daily', title: `Défi du ${frDate(key)}`, date: key, hints: 1, shuffles: 1, legend: 1 });
+  return mk(DAILY_LAYOUTS[h % DAILY_LAYOUTS.length], h, (h >>> 8) % 5, { mode: 'daily', title: `Défi du ${frDate(key)}`, date: key, hints: 1, shuffles: 1, legend: 1, ...(late ? { late: true, title: `Rattrapage · ${frDate(key)}` } : {}) });
 }
 /** Endless run: boards grow with the round, world rotates. */
 export function endlessLevel(round: number, seed: number): PlayLevel {
@@ -45,7 +45,7 @@ export function endlessLevel(round: number, seed: number): PlayLevel {
 }
 export function zenLevel(seed: number, diff: Diff = 'moyen'): PlayLevel {
   const D = DIFFS.find((d) => d.id === diff) ?? DIFFS[1]; const layout = D.pool[seed % D.pool.length];
-  return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, diff: D.id }, D.min);
+  return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, undos: -1, diff: D.id }, D.min);
 }
 
 /** Record a completed daily; returns updated streak. */
@@ -55,6 +55,16 @@ export function recordDaily(s: Stats, key: string) {
   s.dailyDone = [...s.dailyDone, key].slice(-400); s.bestStreak = Math.max(s.bestStreak, s.dailyStreak);
   return s.dailyStreak;
 }
+/** How far back missed dailies can be replayed from the calendar. */
+export const REPLAY_DAYS = 30;
+const addDays = (k: string, n: number) => { const [y, m, d] = k.split('-').map(Number); return dayKey(new Date(y, m - 1, d + n)); };
+/** Past days (newest first, within REPLAY_DAYS) whose daily was neither won on the day nor replayed. */
+export function missedDays(s: Stats, today = dayKey(), span = REPLAY_DAYS) {
+  const out: string[] = []; for (let i = 1; i <= span; i++) { const k = addDays(today, -i); if (!s.dailyDone.includes(k) && !s.dailyLate.includes(k)) out.push(k); } return out;
+}
+export const canReplay = (s: Stats, key: string, today = dayKey()) => missedDays(s, today).includes(key);
+/** A replayed past daily: marked on the calendar, but never touches the streak (no streak repair). */
+export function recordLate(s: Stats, key: string) { if (!s.dailyLate.includes(key) && !s.dailyDone.includes(key)) s.dailyLate = [...s.dailyLate, key].slice(-400); }
 /** Streak currently alive (today or yesterday done). */
 export const liveStreak = (s: Stats, today = dayKey()) => (s.dailyDone.includes(today) || s.dailyDone.includes(prevDay(today)) ? s.dailyStreak : 0);
 
@@ -91,10 +101,10 @@ export function buy(w: Wallet, shelf: Shelf, item: Item) {
   w.carrots -= item.price; w.owned.push(`${shelf}:${item.id}`); return true;
 }
 /** Carrots earned for a win. Replays of levels pay less than the first clear. */
-export function carrotReward(r: { mode: Mode; stars?: number; first?: boolean; round?: number; diff?: Diff; streak?: number; legend?: boolean; ach?: number }) {
+export function carrotReward(r: { mode: Mode; late?: boolean; /** day already cleared before */ again?: boolean; stars?: number; first?: boolean; round?: number; diff?: Diff; streak?: number; legend?: boolean; ach?: number }) {
   let c = 0;
   if (r.mode === 'level') c = (r.first ? 10 : 3) + (r.stars ?? 0) * (r.first ? 5 : 2);
-  else if (r.mode === 'daily') c = 40 + Math.min(7, r.streak ?? 1) * 5;
+  else if (r.mode === 'daily') c = r.again ? 5 : r.late ? 20 : 40 + Math.min(7, r.streak ?? 1) * 5;
   else if (r.mode === 'endless') c = 8 + Math.min(12, r.round ?? 0) * 2;
   else c = { facile: 5, moyen: 10, difficile: 15, expert: 25 }[r.diff ?? 'moyen'];
   return c + (r.legend ? 25 : 0) + (r.ach ?? 0) * 20;
@@ -117,6 +127,7 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: 'stars45', name: 'Ciel étoilé', desc: 'Récolte 45 étoiles.', icon: 'hiver', test: (c) => c.totalStars >= 45 },
   { id: 'stars90', name: 'Constellation', desc: 'Récolte les 90 étoiles.', icon: 'printemps', test: (c) => c.totalStars >= 90 },
   { id: 'daily1', name: 'Rendez-vous', desc: 'Réussis un défi du jour.', icon: 'serviette', test: (c) => c.stats.dailyDone.length >= 1 },
+  { id: 'late1', name: 'Rattrapage', desc: 'Rattrape un défi manqué depuis le calendrier.', icon: 'serviette', test: (c) => c.stats.dailyLate.length >= 1 },
   { id: 'streak3', name: 'Rituel', desc: 'Réussis le défi 3 jours de suite.', icon: 'bonnet', test: (c) => c.stats.bestStreak >= 3 },
   { id: 'streak7', name: 'Habitué de l\'onsen', desc: 'Réussis le défi 7 jours de suite.', icon: 'lotus', test: (c) => c.stats.bestStreak >= 7 },
   { id: 'endless5', name: 'Marathon', desc: 'Termine 5 manches d\'affilée en mode Infini.', icon: 'paille', test: (c) => c.stats.endlessBest >= 5 },

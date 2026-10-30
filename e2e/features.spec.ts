@@ -163,3 +163,42 @@ test('nudges: affordable item shows a wallet dot and a shop link on the win card
   await page.goto('/?level=0'); await G(page).solve(); await expect(page.locator('#w-shop')).toContainText('De quoi t\'offrir');
   await tap(page, '#w-shop'); await expect(page.locator('#v-coll .item').first()).toBeVisible();
 });
+const ago = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+test('calendar: a missed daily is replayed from Modes, marked "rattrapé", pays 20+ carrots and leaves the streak alone', async ({ page }) => {
+  await seed(page, { carrots: 0, stats: { dailyDone: [ago(1)], dailyStreak: 1, bestStreak: 1 } }); await page.goto('/');
+  await tap(page, '#h-modes'); await tap(page, '#mo-cal');
+  await expect(page.locator('.card.calov')).toContainText('Calendrier des défis');
+  const miss = page.locator(`.cal .day.miss[data-day="${ago(2)}"]`); await expect(miss).toBeVisible();
+  await expect(page.locator(`.cal [data-day="${ago(1)}"]`)).toHaveCount(0); // won on the day: not a button
+  await tap(page, `.cal .day.miss[data-day="${ago(2)}"]`);
+  const st = await G(page).state(); expect(st?.mode).toBe('daily'); await expect(page.locator('#g-lvl')).toContainText('Rattrapage');
+  await G(page).solve(); await expect(page.locator('.card.win')).toContainText('rattrapé');
+  const s = await saveOf(page); expect(s.stats.dailyLate).toEqual([ago(2)]); expect(s.stats.dailyDone).toEqual([ago(1)]); expect(s.stats.dailyStreak).toBe(1);
+  expect(s.carrots).toBeGreaterThanOrEqual(20); expect(s.ach).toContain('late1');
+  await expect(page.locator('#w-next')).toContainText('Autre défi'); // more missed days remain
+  await page.goto('/'); await tap(page, '#h-modes'); await tap(page, '#mo-cal');
+  await expect(page.locator(`.cal [data-day="${ago(2)}"]`)).toHaveCount(0); await expect(page.locator('.cal i.ok.late')).toHaveCount(1);
+});
+test('calendar: shown in Stats too, with month navigation; old days out of the window are not playable', async ({ page }) => {
+  await seed(page);
+  await page.goto('/'); await tap(page, '#h-coll'); await tap(page, '.tab[data-t="stats"]');
+  await expect(page.locator('#v-coll .cal .day.today')).toHaveCount(1);
+  if (await page.locator('#v-coll .calnav >> nth=0').isDisabled()) return; // e.g. on the 31st the 30-day window stays in this month
+  await tap(page, '#v-coll .calnav >> nth=0'); await expect(page.locator('#v-coll .cal .day.today')).toHaveCount(0);
+  expect(await page.locator('#v-coll .cal .day.miss').count()).toBeLessThanOrEqual(30);
+  await expect(page.locator('#v-coll .calnav >> nth=0')).toBeDisabled(); // window ends before two months back
+});
+test('undo budget: HUD shows ∞ in the first world and zen, a counter elsewhere that blocks at 0', async ({ page }) => {
+  test.setTimeout(60_000);
+  await seed(page); await page.goto('/?level=0'); await expect(page.locator('#g-undo-n')).toHaveText('∞');
+  await page.goto('/?mode=zen&seed=3'); await expect(page.locator('#g-undo-n')).toHaveText('∞');
+  await page.goto('/?level=20'); await expect(page.locator('#g-undo-n')).toHaveText('3'); await expect(page.locator('#g-undo')).toBeDisabled();
+  for (let i = 0; i < 3; i++) { await page.waitForTimeout(4100); await G(page).pairs(1); await tap(page, '#g-undo'); }
+  await expect(page.locator('#g-undo-n')).toHaveText('0'); await page.waitForTimeout(4100); await G(page).pairs(1); await expect(page.locator('#g-undo')).toBeDisabled();
+  const before = (await G(page).state())!.left; await page.keyboard.press('z'); expect((await G(page).state())!.left).toBe(before);
+  await page.goto('/'); await tap(page, '#h-play'); await expect(page.locator('#g-undo-n')).toHaveText('0'); // budget survives resume
+});
+test('undo budget: a ×4 combo earns one extra undo', async ({ page }) => {
+  await seed(page); await page.goto('/?level=20'); await expect(page.locator('#g-undo-n')).toHaveText('3');
+  await G(page).pairs(4); await expect(page.locator('#g-undo-n')).toHaveText('4'); await expect(page.locator('.pop', { hasText: '+1 annulation' })).toHaveCount(1);
+});

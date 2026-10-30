@@ -98,10 +98,10 @@ Valeur : impact sur rétention / plaisir. Coût : effort estimé. ✅ = fait dan
 | P1-3 | **Annonces accessibles.** Le toast devient `role=status`/`aria-live`. | ★★☆ | XS | ✅ |
 | P1-4 | **« Partager le jeu » dans les réglages.** | ★☆☆ | XS | ✅ |
 | P1-5 | **Progression des succès** (« 3/5 capydindons »), pour les complétionnistes. | ★★☆ | S | backlog |
-| P2-1 | **Rejouer un défi manqué** depuis le calendrier : récompense réduite, sans effet sur la série. | ★★☆ | M | backlog (décision : faut-il ?) |
+| P2-1 | **Rejouer un défi manqué** depuis le calendrier : récompense réduite, sans effet sur la série. | ★★☆ | M | **fait** (Phase 6) : calendrier (Modes + Stats), 30 derniers jours, +20 carottes (+5 si déjà fait), hors série, marqué orange, succès « Rattrapage » |
 | P2-2 | **Jeu au clavier sur desktop** (flèches + Entrée, focus visible). | ★☆☆ | M | backlog |
 | P2-3 | **« Bouillotte » anti-perte de série,** achetable en carottes (façon Duolingo). | ★★☆ | S | backlog (décision : économie) |
-| P2-4 | **Limite d'annulations par niveau,** en option de difficulté. | ★☆☆ | S | backlog (décision) |
+| P2-4 | **Limite d'annulations par niveau,** en option de difficulté. | ★☆☆ | S | **fait** (Phase 6) : ∞ en Zen et monde 1, 5 aux mondes 2-3, défi et Infini, 3 aux mondes 4-5 ; +1 par combo ×4 ou capydindon ; compteur dans le HUD |
 | P2-5 | **Option « Animations réduites »** dans les réglages, en plus de la préférence système. | ★☆☆ | XS | backlog |
 | P2-6 | **Image de résultat partageable** (PNG généré en canvas) plutôt que du texte. | ★☆☆ | M | backlog |
 | P3 | **Test sur vrai téléphone** (iOS Safari et Android Chrome), audio et vibrations. | ★★★ | — | à faire par Maxime après le déploiement |

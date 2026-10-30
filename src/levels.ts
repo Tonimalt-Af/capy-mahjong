@@ -61,7 +61,7 @@ export const WORLDS: World[] = [
   { id: 'temple', name: 'Temple', music: 4, bg: ['#FFF1CF', '#E8B864'], accent: '#B9822A', mascot: 'chat' },
 ];
 
-export interface Level { n: number; world: number; index: number; layout: string; seed: number; par: number; hints: number; shuffles: number }
+export interface Level { n: number; world: number; index: number; layout: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number }
 const PLAN: string[][] = [
   ['galet', 'galet', 'pont', 'galet', 'pont', 'coeur'],
   ['pont', 'pyramide', 'coeur', 'pyramide', 'fleur', 'ours'],
@@ -71,9 +71,11 @@ const PLAN: string[][] = [
 ];
 /** Seeds picked by simulation (scripts: random-play win rate ≈ 95% → 35%) for a smooth difficulty curve. */
 export const SEEDS = [1000,214850,16912,32670,40416,53533,143764,70859,81487,128037,100385,112192,120229,199456,140801,150119,161009,25386,72937,193548,199722,210481,168113,230296,240924,33601,261001,274773,279506,65425];
+/** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */
+export const undoBudget = (world: number) => (world === 0 ? -1 : world <= 2 ? 5 : 3);
 export const LEVELS: Level[] = PLAN.flatMap((ls, w) => ls.map((layout, i) => {
   const n = w * 6 + i; const tiles = LAYOUTS[layout].make().length;
-  return { n, world: w, index: i, layout, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: Math.max(1, 4 - w), shuffles: Math.max(1, 3 - Math.floor(w / 2)) };
+  return { n, world: w, index: i, layout, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: Math.max(1, 4 - w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w) };
 }));
 
 /** Stars: 3 = within par and no hint; 2 = within 1.6×par or at most 1 hint; 1 = cleared */
