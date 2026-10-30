@@ -9,7 +9,7 @@ import { Fx } from './fx';
 import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, dayKey, frDate, OUTFITS, THEMES, BACKS, owns, buy, carrotReward, DIFFS, LEVEL_LEGEND, ACHIEVEMENTS, checkAchievements, type PlayLevel, type Diff, type Item, type Shelf } from './meta';
 
 const S = load();
-const snd = new Sound(); snd.sfxOn = S.settings.sfx; snd.musicOn = S.settings.music;
+const snd = new Sound(); snd.sfxOn = S.settings.sfx; snd.musicOn = S.settings.music; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol);
 const fx = new Fx();
 const $ = (id: string) => document.getElementById(id)!;
 const h = (html: string) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild as HTMLElement; };
@@ -481,10 +481,13 @@ function noMoves() {
 }
 function settings(back?: () => void) {
   const row = (id: string, label: string, on: boolean) => `<label class="set"><span>${label}</span><button class="sw ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${on}"><i></i></button></label>`;
-  openOv(`<h2>Réglages</h2><div class="sets">${row('s-sfx', 'Effets sonores', S.settings.sfx)}${row('s-music', 'Musique lo-fi', S.settings.music)}${row('s-dim', 'Assombrir les tuiles bloquées', S.settings.dim)}${row('s-hl', 'Montrer les paires possibles', S.settings.hl)}${row('s-auto', 'Indice automatique (20 s)', S.settings.autohint)}${row('s-vib', 'Vibrations', S.settings.vibrate)}</div>
+  const vol = (id: string, label: string, v: number, on: boolean) => `<label class="set vol${on ? '' : ' off'}"><span>${label}</span><input type="range" id="${id}" min="0" max="100" step="5" value="${Math.round(v * 100)}" aria-label="${label}"></label>`;
+  openOv(`<h2>Réglages</h2><div class="sets">${row('s-sfx', 'Effets sonores', S.settings.sfx)}${row('s-music', 'Musique lo-fi', S.settings.music)}${vol('v-sfx', 'Volume des effets', S.settings.sfxVol, S.settings.sfx)}${vol('v-music', 'Volume de la musique', S.settings.musicVol, S.settings.music)}${row('s-dim', 'Assombrir les tuiles bloquées', S.settings.dim)}${row('s-hl', 'Montrer les paires possibles', S.settings.hl)}${row('s-auto', 'Indice automatique (20 s)', S.settings.autohint)}${row('s-vib', 'Vibrations', S.settings.vibrate)}</div>
     <div class="row"><button class="btn" id="s-share">${ic('share')}<span>Partager le jeu</span></button><button class="btn danger" id="s-reset">Effacer la progression</button><button class="btn primary" id="s-ok">OK</button></div><p class="credits">Musique et sons créés dans le jeu · Police Fredoka (OFL)</p>`, 'settings');
-  const bind = (id: string, key: keyof typeof S.settings, after?: (v: boolean) => void) => { $(id).onclick = () => { S.settings[key] = !S.settings[key]; persist(); $(id).classList.toggle('on', S.settings[key]); $(id).setAttribute('aria-checked', String(S.settings[key])); after?.(S.settings[key]); snd.play('click'); }; };
-  bind('s-sfx', 'sfx', (v) => (snd.sfxOn = v)); bind('s-music', 'music', (v) => snd.setMusic(v)); bind('s-dim', 'dim', () => refresh()); bind('s-vib', 'vibrate'); bind('s-hl', 'hl', () => refresh()); bind('s-auto', 'autohint', () => g && (g.idle = Date.now()));
+  const bind = (id: string, key: 'sfx' | 'music' | 'dim' | 'vibrate' | 'hl' | 'autohint', after?: (v: boolean) => void) => { $(id).onclick = () => { S.settings[key] = !S.settings[key]; persist(); $(id).classList.toggle('on', S.settings[key]); $(id).setAttribute('aria-checked', String(S.settings[key])); after?.(S.settings[key]); snd.play('click'); }; };
+  bind('s-sfx', 'sfx', (v) => { snd.sfxOn = v; $('v-sfx').parentElement!.classList.toggle('off', !v); }); bind('s-music', 'music', (v) => { snd.setMusic(v); $('v-music').parentElement!.classList.toggle('off', !v); });
+  const slide = (id: string, key: 'musicVol' | 'sfxVol') => { const el = $(id) as HTMLInputElement; const set = () => { S.settings[key] = +el.value / 100; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol); }; el.oninput = set; el.onchange = () => { set(); persist(); if (key === 'sfxVol') snd.play('select'); }; };
+  slide('v-sfx', 'sfxVol'); slide('v-music', 'musicVol'); bind('s-dim', 'dim', () => refresh()); bind('s-vib', 'vibrate'); bind('s-hl', 'hl', () => refresh()); bind('s-auto', 'autohint', () => g && (g.idle = Date.now()));
   $('s-reset').onclick = () => { if ($('s-reset').dataset.c) { const st = reset(); Object.assign(S, st); persist(); toast('Progression effacée'); renderHome(); show('home'); } else { $('s-reset').dataset.c = '1'; $('s-reset').textContent = 'Confirmer ?'; } };
   $('s-share').onclick = () => void share('Mahjong Capybaras 🦫 : le mahjong le plus doux du web. Gratuit, sans pub.', base());
   $('s-ok').onclick = () => { snd.play('click'); if (back) back(); else closeOv(); };

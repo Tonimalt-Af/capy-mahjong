@@ -129,6 +129,8 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
 .sw{border:0;width:58px;height:34px;border-radius:17px;background:#D9CFC2;position:relative;cursor:pointer;flex:none;transition:background .2s}
 .sw i{position:absolute;top:4px;left:4px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 3px #0003;transition:left .2s cubic-bezier(.3,1.6,.6,1)}
 .sw.on{background:var(--acc)}.sw.on i{left:28px}
+.set.vol input{flex:0 1 170px;min-width:110px;accent-color:var(--acc);height:28px;cursor:pointer}
+.set.vol.off{opacity:.55}
 .credits{font-size:12px;opacity:.6;margin:10px 0 0}
 .how{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 8px}
 .hstep{background:#fff;border-radius:18px;padding:10px}.hstep p{font-size:14px;margin:6px 0 0}
@@ -338,7 +340,7 @@ button.wallet{border:0;font:inherit;color:inherit}
 .card.win .row .iconbtn.share{width:48px;height:48px;align-self:center}
 @media (max-height:500px){.card.win .row .iconbtn.share{width:42px;height:42px}}
 @media (prefers-reduced-motion:reduce){.hand,.tile.coach::after{animation:none}}
-@media (max-height:500px){.card.settings{max-width:min(760px,94vw)}.card.settings h2{margin:0 0 2px}.card.settings .sets{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:min(700px,88vw);margin:4px 0 6px}.card.settings .set{font-size:14px;padding:5px 8px 5px 12px;gap:10px;border-radius:12px}.card.settings .sw{width:48px;height:28px}.card.settings .sw i{width:20px;height:20px}.card.settings .sw.on i{left:24px}.card.settings .credits{margin:4px 0 0}}
+@media (max-height:500px){.card.settings{max-width:min(760px,94vw)}.card.settings h2{margin:0 0 2px}.card.settings .sets{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:min(700px,88vw);margin:4px 0 6px}.card.settings .set{font-size:14px;padding:5px 8px 5px 12px;gap:10px;border-radius:12px}.card.settings .sw{width:48px;height:28px}.card.settings .sw i{width:20px;height:20px}.card.settings .sw.on i{left:24px}.card.settings .set.vol input{height:24px;flex-basis:140px}.card.settings .credits{margin:4px 0 0}}
 
 /* ---- Phase 6: missed-daily calendar + undo budget ---- */
 .hgroup{margin-left:auto;display:flex;gap:8px;align-items:center}
@@ -386,3 +388,5 @@ button.wallet{border:0;font:inherit;color:inherit}
 .home-art .total{background:#fffc}
 @media (orientation:portrait){#v-home::before{background-position:70% 100%}#v-home::after{background:linear-gradient(180deg,#EAF7F1f2 0%,#EAF7F1cc 55%,#EAF7F100 85%)}}
 @media (prefers-reduced-motion:reduce){#v-home::before,#v-home::after{transition:none}}
+/* Settings: two columns on wide screens so the volume sliders fit without scrolling */
+@media (min-width:760px) and (min-height:501px){.card.settings{max-width:min(820px,94vw)}.card.settings .sets{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:min(760px,88vw)}}

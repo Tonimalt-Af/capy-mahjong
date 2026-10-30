@@ -48,6 +48,15 @@ test('settings: dimming toggle persists', async ({ page }) => {
   await page.reload(); expect(await page.evaluate(() => JSON.parse(localStorage.getItem('capy-mahjong-v1')!).settings.dim)).toBe(false);
   await page.goto('/?level=0'); await expect(page.locator('body')).not.toHaveClass(/dim/);
 });
+test('settings: volume sliders start at the soft defaults and persist', async ({ page }) => {
+  await tap(page, '#h-settings');
+  await expect(page.locator('#v-music')).toHaveValue('45'); await expect(page.locator('#v-sfx')).toHaveValue('60');
+  await expect(page.locator('#v-music')).toBeInViewport(); await expect(page.locator('#v-sfx')).toBeInViewport(); await expect(page.locator('#s-ok')).toBeInViewport();
+  await page.locator('#v-music').fill('20'); await page.locator('#v-sfx').fill('80'); await tap(page, '#s-ok');
+  await page.reload(); const st = await page.evaluate(() => JSON.parse(localStorage.getItem('capy-mahjong-v1')!).settings);
+  expect(st.musicVol).toBeCloseTo(0.2); expect(st.sfxVol).toBeCloseTo(0.8);
+  await tap(page, '#h-settings'); await expect(page.locator('#v-music')).toHaveValue('20');
+});
 test('world map: locked world tabs are disabled', async ({ page }) => {
   await tap(page, '#h-levels'); await expect(page.locator('.tab[data-w="1"]')).toBeDisabled(); await expect(page.locator('.node')).toHaveCount(6);
 });

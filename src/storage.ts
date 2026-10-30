@@ -4,10 +4,17 @@ import type { PlayLevel } from './meta';
 /** In-progress board, saved after every move so an interrupted game can be resumed. */
 export interface Run { level: PlayLevel; kinds: string[]; removed: number[]; history: [number, number][]; t: number; hints: number; shuffles: number; undos: number; undoBonus?: number; score: number; legends: number; maxCombo: number }
 const KEY = 'capy-mahjong-v1';
-export interface Save { stars: Record<number, number>; best: Record<number, number>; settings: { sfx: boolean; music: boolean; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean }; seenHowTo: boolean; seenUndo?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; diff: Diff; run: Run | null }
-const DEF: Save = { stars: {}, best: {}, settings: { sfx: true, music: true, dim: true, vibrate: true, hl: true, autohint: false }, seenHowTo: false, stats: NEW_STATS(), ach: [], outfit: 'agrume', carrots: 0, owned: [], theme: 'capy', bg: 'monde', diff: 'moyen', run: null };
+export interface Save { stars: Record<number, number>; best: Record<number, number>; settings: { sfx: boolean; music: boolean; musicVol: number; sfxVol: number; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean }; seenHowTo: boolean; seenUndo?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; diff: Diff; run: Run | null }
+/** Merge saved settings over defaults; volumes missing or invalid in older saves fall back to the new softer defaults. */
+export function migrateSettings(x: unknown): Save['settings'] {
+  const o = { ...DEF.settings, ...(x && typeof x === 'object' ? x : {}) } as Save['settings'];
+  const vol = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
+  o.musicVol = vol(o.musicVol, DEF.settings.musicVol); o.sfxVol = vol(o.sfxVol, DEF.settings.sfxVol);
+  return o;
+}
+const DEF: Save = { stars: {}, best: {}, settings: { sfx: true, music: true, musicVol: 0.45, sfxVol: 0.6, dim: true, vibrate: true, hl: true, autohint: false }, seenHowTo: false, stats: NEW_STATS(), ach: [], outfit: 'agrume', carrots: 0, owned: [], theme: 'capy', bg: 'monde', diff: 'moyen', run: null };
 export function load(): Save {
-  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) return { ...DEF, ...s, settings: { ...DEF.settings, ...s.settings }, stats: { ...NEW_STATS(), ...s.stats }, ach: s.ach ?? [], owned: s.owned ?? [] }; } catch { /* corrupted save */ }
+  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) return { ...DEF, ...s, settings: migrateSettings(s.settings), stats: { ...NEW_STATS(), ...s.stats }, ach: s.ach ?? [], owned: s.owned ?? [] }; } catch { /* corrupted save */ }
   return structuredClone(DEF);
 }
 export const save = (s: Save) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* quota / private mode */ } };

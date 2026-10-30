@@ -8,6 +8,7 @@ Mahjong solitaire kawaii, mobile-first (paysage), 30 niveaux / 5 mondes, PWA hor
 - **Plateaux en forme** : Cœur, Capybara, Chat, Ourson, Étoile, Champignon (+ classiques). Tous garantis solubles.
 - **Amis** : chat noir, ourson et le **capydindon légendaire** — une paire dorée rare (garantie dans le défi du jour) : +1000 points, +25 carottes, et sa tenue la première fois.
 - **Carottes** 🥕 : gagnées en jouant (niveaux, défi, infini, zen, succès), dépensées dans la Collection pour des tenues, des jeux de tuiles (Ménagerie, Chats noirs, Oursons) et des fonds de plateau (Nuit étoilée, Sakura, Potiron). Aucun argent réel.
+- **Musique lo-fi et sons** : entièrement synthétisés (Web Audio, aucun fichier) : piano électrique façon Rhodes, accords jazz (7e/9e), basse douce, batterie feutrée, swing et léger craquement vinyle, un morceau par monde. Volumes réglables dans Réglages (musique 45 %, effets 60 % par défaut). Pour réécouter/mesurer : `npm run dev` puis `node scripts/audio/render.mjs /src/audio.ts previews/audio/after 0` (WAV + pic/RMS) ; extraits MP3 avant/après dans `previews/audio/`.
 - **Aides** : paires possibles en surbrillance (désactivable), indice automatique après 20 s (optionnel), tuiles bloquées assombries.
 - Succès, statistiques, calendrier mensuel des défis.
 - **Rattrapage** : un défi manqué (30 derniers jours) se rejoue depuis le calendrier (bouton dans Modes, ou Stats) : +20 carottes, marqué en orange, sans effet sur la série 🔥.
