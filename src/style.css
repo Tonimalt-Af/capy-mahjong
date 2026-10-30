@@ -419,3 +419,40 @@ button.wallet{border:0;font:inherit;color:inherit}
 /* boot recovery screen (shown only if the game cannot start) */
 .rescue{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;background:linear-gradient(180deg,#D7F1E8,#7FC8B4);color:#3B2416;font-family:Fredoka,system-ui,sans-serif}
 .rescue h2{margin:0;font-size:1.5em}.rescue p{max-width:520px;margin:0 0 6px}
+
+/* ===== Phase 2: tile backs, onsen decor, seasonal shop, save code, update toast ===== */
+/* tile backs (shop 'Dos des tuiles'): only tiles take the colour, buttons keep the wood edge */
+.tile,.mini,.ht-tile,.k-art{--side:var(--tside,#E2BF8C);--side2:var(--tside2,#C99A62)}
+.k-art{display:flex;gap:6px;justify-content:center;padding:8px 6px 6px 10px}
+.k-art .mini{position:static;width:auto;border-radius:6px;line-height:0;box-shadow:-3px 3px 0 var(--side),-5px 5px 0 var(--side2);animation:none}.k-art svg{border-radius:6px}
+.d-art{width:78px;height:70px;display:grid;place-items:center}.d-art svg{max-width:100%;max-height:100%;filter:drop-shadow(0 3px 0 #0000001f)}
+.d-art.big{width:150px;height:130px;margin:0 auto}
+.item.locked .d-art,.item.locked .k-art{filter:saturate(.35) opacity(.7)}.item.locked.can .d-art,.item.locked.can .k-art{filter:none}
+.shelf small{font-size:.62em;font-weight:500;opacity:.7;margin-left:6px}
+.shelf.season{color:#D9611C}.item .until{font-size:11px;font-weight:500;opacity:.75;margin-top:-2px}
+/* onsen decorations on the home hero */
+.hdec{position:absolute;pointer-events:none;line-height:0;filter:drop-shadow(0 5px 0 #0000001a)}.hdec svg{width:100%;height:auto}
+.dec-lanterne{width:10%;right:3%;top:-6%;animation:sway 5s ease-in-out infinite;transform-origin:50% 0}
+.dec-canards{width:19%;right:24%;bottom:20%;animation:float 4.5s ease-in-out infinite}
+.dec-yuzus{width:17%;left:36%;bottom:1%;animation:float 5s ease-in-out infinite -2s}
+.dec-seau{width:12%;right:1%;bottom:2%}
+.dec-bonsai{width:15%;left:0;top:10%}
+.dec-maneki{width:13%;right:16%;top:4%}
+@keyframes sway{50%{transform:rotate(4deg)}}
+@media (prefers-reduced-motion:reduce){.hdec{animation:none}}
+/* save code */
+.card.savecode{max-width:min(620px,94vw);text-align:left}.card.savecode h2,.card.savecode .row{text-align:center;justify-content:center}
+.codebox{display:flex;gap:8px;align-items:stretch}
+.codebox textarea{flex:1;min-width:0;font:13px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;border:3px solid #fff;border-radius:14px;padding:8px 10px;background:#FFF6E6;color:var(--ink);resize:none;user-select:text;-webkit-user-select:text;word-break:break-all;box-shadow:inset 0 2px 0 #0000000f}
+.codebox textarea:focus{outline:3px solid var(--acc);outline-offset:1px}
+.scmsg{min-height:1.3em;margin:8px 0 0;font-weight:600;color:#C8303F}.scmsg.ok{color:#2A7F4B}
+@media (max-height:500px){.card.savecode .ptitle{font-size:13px;margin:2px 0 6px}.codebox textarea{height:46px}.card.savecode .shelf{margin:6px 0 4px}}
+/* "new version" toast */
+.upd{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:250;display:flex;align-items:center;gap:10px;background:#fff;border-radius:999px;padding:6px 6px 6px 18px;box-shadow:0 6px 0 #0000001a,0 10px 24px #3b241633;font-weight:600;white-space:nowrap;animation:updin .3s ease-out}
+.upd .btn{min-height:40px;padding:6px 14px}.upd .iconbtn{width:40px;height:40px;box-shadow:none;font-size:22px}
+@keyframes updin{from{transform:translate(-50%,30px);opacity:0}}
+/* keyboard play: visible focus on free tiles */
+.tile:focus{outline:none}.tile:focus-visible{outline:4px solid var(--acc);outline-offset:2px;border-radius:12%}
+/* level names (steering 2026-10-30): two short lines max under each map node */
+.node .lname{white-space:normal;text-align:center;max-width:118px;line-height:1.15;padding:2px 8px}
+@media (max-height:500px){.node .lname{font-size:11px;max-width:100px}}

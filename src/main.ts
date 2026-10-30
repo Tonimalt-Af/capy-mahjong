@@ -3,11 +3,12 @@ import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
 import { deal, isFree, matches, findHint, reshuffle, clearable, type Tile } from './engine';
 import { LAYOUTS, LEVELS, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
-import { loadSave, save, reset, unlocked, totalStars, KEY, CORRUPT_KEY, type Run } from './storage';
+import { loadSave, save, reset, unlocked, totalStars, exportCode, importCode, KEY, CORRUPT_KEY, type Run } from './storage';
+import { decorSvg } from './decor';
 import { parseDeep } from './deeplink';
 import { Sound, DEFAULT_MUSIC } from './audio';
 import { Fx } from './fx';
-import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, dayKey, frDate, OUTFITS, THEMES, BACKS, owns, buy, carrotReward, DIFFS, LEVEL_LEGEND, ACHIEVEMENTS, checkAchievements, type PlayLevel, type Diff, type Item, type Shelf } from './meta';
+import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, dayKey, frDate, OUTFITS, THEMES, BACKS, EDGES, DECOR, SHELF_ITEMS, onSale, seasonal, firstDayOf, zenShared, zenLink, owns, buy, carrotReward, DIFFS, LEVEL_LEGEND, ACHIEVEMENTS, checkAchievements, type PlayLevel, type Diff, type Item, type Shelf } from './meta';
 
 // Boot guard: if anything throws before the home screen is up, show a recovery screen instead of a blank page.
 let booted = false;
@@ -27,6 +28,10 @@ addEventListener('error', () => rescue());
 addEventListener('unhandledrejection', () => rescue());
 const LOADED = loadSave();
 const S = LOADED.save;
+/** First day of play: missed dailies before it can't be "caught up" (no farming on a brand-new save). */
+if (!S.firstDay) { S.firstDay = firstDayOf(S.stats); save(S); }
+/** French plural: n + word (+ 's' unless given). */
+const pl = (n: number, one: string, many = `${one}s`) => `${n} ${n > 1 ? many : one}`;
 const snd = new Sound(); snd.sfxOn = S.settings.sfx; snd.musicOn = S.settings.music; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol);
 const fx = new Fx();
 const $ = (id: string) => document.getElementById(id)!;
@@ -40,7 +45,7 @@ const ICON: Record<string, string> = {
   note: '<path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.6"/><circle cx="16.5" cy="15.5" r="2.6"/>',
   noteoff: '<path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.6"/><circle cx="16.5" cy="15.5" r="2.6"/><path d="M3.5 3.5l17 17" stroke="#fff" stroke-width="6"/><path d="M3.5 3.5l17 17"/>', home: '<path d="M3 11l9-7 9 7v9H15v-6H9v6H3z"/>',
   gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
-  back: '<path d="M15 5l-7 7 7 7"/>', play: '<path d="M8 5l11 7-11 7z" fill="currentColor"/>', lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>', save: '<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>', play: '<path d="M8 5l11 7-11 7z" fill="currentColor"/>', lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   share: '<path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
   help: '<circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/>', map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z M9 4v14 M15 6v14"/>',
   cal: '<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>', inf: '<path d="M7 9a3 3 0 1 0 0 6c2.5 0 4-6 10-6a3 3 0 1 1 0 6c-6 0-7.5-6-10-6z"/>', leaf: '<path d="M5 19C5 10 11 5 20 4c0 9-5 15-14 15zM5 19l7-7"/>', bag: '<path d="M5 8h14l-1 12H6zM9 8a3 3 0 0 1 6 0"/>', trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 14v3M8 20h8"/>', chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', check: '<path d="M5 12l5 5 9-10"/>', retry: '<path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4"/>', next: '<path d="M5 12h14M13 6l6 6-6 6"/>',
@@ -100,7 +105,11 @@ function show(v: string, world = -1) {
 function setWorld(w: number) { const W = WORLDS[w]; document.body.style.setProperty('--w1', W.bg[0]); document.body.style.setProperty('--w2', W.bg[1]); document.body.style.setProperty('--acc', W.accent); document.body.dataset.world = W.id; snd.music(w); }
 // first user gesture: unlock audio, try fullscreen + landscape lock on touch devices
 let unlockedAudio = false;
-addEventListener('pointerdown', () => { if (!unlockedAudio) { unlockedAudio = true; snd.ensure(); const w = WORLDS.findIndex((x) => x.id === document.body.dataset.world); snd.music(Math.max(0, w)); } }, { capture: true });
+/** Every gesture (re)unlocks audio: iOS only starts or resumes a context inside touchend/click/keydown, and can interrupt it at any time. */
+const gesture = () => { snd.ensure(); if (!unlockedAudio && snd.ctx) { unlockedAudio = true; const w = WORLDS.findIndex((x) => x.id === document.body.dataset.world); snd.music(Math.max(0, w)); } };
+for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) addEventListener(ev, gesture, { capture: true, passive: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && unlockedAudio) snd.ensure(); });
+addEventListener('pageshow', () => { if (unlockedAudio) snd.ensure(); });
 async function goLandscape() {
   if (!matchMedia('(pointer:coarse)').matches) return;
   try { if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch { /* not allowed */ }
@@ -114,11 +123,14 @@ decor.innerHTML = `<svg viewBox="0 0 1600 400" preserveAspectRatio="xMidYMax sli
 
 // ---------- HOME
 /** Priciest shop item the player can buy right now (drives the "you can afford…" nudges). */
-function affordable(): Item | null {
-  const all: [Shelf, Item][] = [...OUTFITS.map((o): [Shelf, Item] => ['o', o]), ...THEMES.map((o): [Shelf, Item] => ['t', o]), ...BACKS.map((o): [Shelf, Item] => ['b', o])];
-  const c = all.filter(([sh, it]) => !it.legend && it.price > 0 && it.price <= S.carrots && !owns(S, sh, it.id)).sort((a, b) => b[1].price - a[1].price);
-  return c[0]?.[1] ?? null;
+function affordable(): [Shelf, Item] | null {
+  const today = dayKey(); const all = (Object.keys(SHELF_ITEMS) as Shelf[]).flatMap((sh) => SHELF_ITEMS[sh].map((it): [Shelf, Item] => [sh, it]));
+  const c = all.filter(([sh, it]) => !it.legend && it.price > 0 && it.price <= S.carrots && onSale(it, today) && !owns(S, sh, it.id)).sort((a, b) => b[1].price - a[1].price);
+  return c[0] ?? null;
 }
+/** Tile back colours (shop shelf 'k'): applied to every tile edge and the back art. */
+function applyEdge() { const e = EDGES.find((x) => x.id === S.edge) ?? EDGES[0]; const st = document.body.style; st.setProperty('--tside', e.side); st.setProperty('--tside2', e.side2); document.body.dataset.edge = e.id; }
+const edgeBack = () => (EDGES.find((x) => x.id === S.edge) ?? EDGES[0]).back;
 /** Saved in-progress board, if it still matches the current layouts (and a daily is still today's). */
 function validRun(): Run | null {
   const r = S.run; if (!r || !LAYOUTS[r.level.layout] || r.kinds.length !== LAYOUTS[r.level.layout].make().length || r.removed.length >= r.kinds.length) return null;
@@ -137,13 +149,13 @@ async function share(text: string, url: string) {
 function renderHome() {
   const tot = totalStars(S); const aff = affordable(); const run = validRun(); const today = dayKey(); const streak = liveStreak(S.stats, today);
   $('v-home').innerHTML = `
-  <div class="home"><button class="wallet" id="h-wallet" aria-label="${S.carrots} carottes${aff ? ', un achat est possible' : ''}">${CARROT()}<b>${S.carrots}</b>${aff ? '<i class="dot" aria-hidden="true"></i>' : ''}</button><div class="corner">${musicBtn('h-music')}<button class="iconbtn" id="h-help" aria-label="Comment jouer">${ic('help')}</button><button class="iconbtn" id="h-settings" aria-label="Réglages">${ic('gear')}</button></div>
+  <div class="home"><button class="wallet" id="h-wallet" aria-label="${pl(S.carrots, 'carotte')}${aff ? ', un achat est possible' : ''}">${CARROT()}<b>${S.carrots}</b>${aff ? '<i class="dot" aria-hidden="true"></i>' : ''}</button><div class="corner">${musicBtn('h-music')}<button class="iconbtn" id="h-help" aria-label="Comment jouer">${ic('help')}</button><button class="iconbtn" id="h-settings" aria-label="Réglages">${ic('gear')}</button></div>
     <div class="home-l">
       <h1 class="logo"><span>Mahjong</span><span class="big">Capybaras</span></h1>
       <div class="menu">
-        <button class="btn primary xl ${run ? 'resume' : ''}" id="h-play">${ic('play')}<span>${run ? 'Reprendre' : tot ? 'Continuer' : 'Jouer'}${run ? `<small>${run.level.mode === 'level' ? `Niveau ${run.level.n + 1}` : run.level.mode === 'daily' ? (run.level.late ? 'Rattrapage' : 'Défi du jour') : run.level.mode === 'zen' ? 'Zen' : `Infini · manche ${run.level.round! + 1}`} · ${(run.kinds.length - run.removed.length) / 2} paires</small>` : ''}</span></button>
+        <button class="btn primary xl ${run ? 'resume' : ''}" id="h-play">${ic('play')}<span>${run ? 'Reprendre' : tot ? 'Continuer' : 'Jouer'}${run ? `<small>${run.level.mode === 'level' ? `Niveau ${run.level.n + 1}` : run.level.mode === 'daily' ? (run.level.late ? 'Rattrapage' : 'Défi du jour') : run.level.mode === 'zen' ? 'Zen' : `Infini · manche ${run.level.round! + 1}`} · ${pl((run.kinds.length - run.removed.length) / 2, 'paire')}</small>` : ''}</span></button>
         <button class="btn" id="h-levels">${ic('map')}<span>Niveaux</span></button>
-        <button class="btn" id="h-modes">${ic('cal')}<span>Modes</span>${S.stats.dailyDone.includes(today) ? '' : streak ? `<b class="dot streak" aria-label="Défi du jour à faire, série de ${streak} jours en jeu">🔥${streak}</b>` : '<b class="dot" aria-label="Défi du jour disponible"></b>'}</button>
+        <button class="btn" id="h-modes">${ic('cal')}<span>Modes</span>${S.stats.dailyDone.includes(today) ? '' : streak ? `<b class="dot streak" aria-label="Défi du jour à faire, série de ${pl(streak, 'jour')} en jeu">🔥${streak}</b>` : '<b class="dot" aria-label="Défi du jour disponible"></b>'}</button>
         <button class="btn" id="h-coll">${ic('bag')}<span>Collection</span></button>
         <div class="total">${STAR(true)} ${tot} / ${LEVELS.length * 3}</div>
       </div>
@@ -154,7 +166,8 @@ function renderHome() {
         <div class="hero-capy bob">${capySvg(S.outfit)}</div>
         <div class="hero-capy small bob2">${capySvg(S.outfit === 'agrume' ? 'serviette' : 'agrume')}</div>
         <div class="hero-friend f-cat bob2">${capySvg('chat')}</div><div class="hero-friend f-bear bob">${capySvg('ours')}</div>
-        <div class="hero-tiles">${['fraise-3', 'canard', 'feuille-7'].map((k, i) => `<div class="mini t${i}"><svg viewBox="0 0 100 130"><use href="#k-${k}"/></svg></div>`).join('')}<div class="mini t3">${backSvg()}</div></div>
+        <div class="hero-tiles">${['fraise-3', 'canard', 'feuille-7'].map((k, i) => `<div class="mini t${i}"><svg viewBox="0 0 100 130"><use href="#k-${k}"/></svg></div>`).join('')}<div class="mini t3">${backSvg(100, 130, edgeBack())}</div></div>
+        ${S.decor.map((id) => `<div class="hdec dec-${id}">${decorSvg(id)}</div>`).join('')}
         <div class="steam hero-steam"><i></i><i></i><i></i></div>
       </div>
     </div>
@@ -167,13 +180,14 @@ function renderHome() {
   $('h-coll').onclick = () => { snd.play('click'); renderColl(); show('coll'); };
   $('h-wallet').onclick = () => { snd.play('click'); renderColl('outfits'); show('coll'); };
 }
+const shopTab = (sh: Shelf) => (sh === 'o' ? 'outfits' : 'decor');
 
 // ---------- MODES
 function renderModes() {
   const today = dayKey(); const d = dailyLevel(today); const done = S.stats.dailyDone.includes(today); const streak = liveStreak(S.stats, today);
   $('v-modes').innerHTML = `<header class="maphead"><button class="iconbtn" id="mo-back" aria-label="Accueil">${ic('back')}</button><h2 class="vtitle">Modes de jeu</h2><div class="hgroup"><button class="btn calbtn" id="mo-cal">${ic('cal')}<span>Calendrier</span></button><div class="chip">🔥 ${streak}</div></div></header>
   <div class="modes">
-    <button class="mode daily ${done ? 'done' : ''}" id="mo-daily"><div class="m-art">${capySvg('capydindon')}</div><h3>Défi du jour</h3><p>${d.title.replace('Défi du ', '')} · ${LAYOUTS[d.layout].name} · ${LAYOUTS[d.layout].make().length} tuiles</p><span class="week">${week()}</span><span class="m-tag">${done ? `${ic('check')} Réussi · série ${streak}` : 'Capydindon doré garanti'}</span><span class="m-go">${ic('play')}Jouer</span></button>
+    <button class="mode daily ${done ? 'done' : ''}" id="mo-daily"><div class="m-art">${capySvg('capydindon')}</div><h3>Défi du jour</h3><p>${d.title.replace('Défi du ', '')} · ${LAYOUTS[d.layout].name} · ${LAYOUTS[d.layout].make().length} tuiles</p><span class="week">${week()}</span><span class="m-tag">${done ? `${ic('check')} Réussi · série ${streak}` : 'Capydindon doré : 1 chance sur 3'}</span><span class="m-go">${ic('play')}Jouer</span></button>
     <button class="mode endless" id="mo-endless"><div class="m-art">${capySvg('canard')}</div><h3>Infini</h3><p>Des plateaux de plus en plus grands, jusqu'où iras-tu&nbsp;?</p><span class="m-tag">Record : ${S.stats.endlessBest} manche${S.stats.endlessBest > 1 ? 's' : ''}</span><span class="m-go">${ic('play')}Jouer</span></button>
     <button class="mode zen" id="mo-zen"><div class="m-art">${capySvg('lotus')}</div><h3>Zen</h3><p>Sans chrono, aides illimitées, 4 difficultés et plateaux en forme.</p><span class="m-tag">${S.stats.zenWon} plateau${S.stats.zenWon > 1 ? 'x' : ''} vidé${S.stats.zenWon > 1 ? 's' : ''}</span><span class="m-go">${ic('play')}Jouer</span></button>
   </div>`;
@@ -201,14 +215,17 @@ let endlessSeed = 1;
 
 // ---------- COLLECTION (shop: outfits / tile sets & backgrounds · achievements · stats)
 let collTab = 'outfits';
-const equipped = (shelf: Shelf, id: string) => (shelf === 'o' ? S.outfit : shelf === 't' ? S.theme : S.bg) === id;
+const equipped = (shelf: Shelf, id: string) => (shelf === 'd' ? S.decor.includes(id) : (shelf === 'o' ? S.outfit : shelf === 't' ? S.theme : shelf === 'k' ? S.edge : S.bg) === id);
+const edgeArt = (id: string, w = 40, hh = 52) => { const e = EDGES.find((x) => x.id === id)!; return `<div class="k-art" style="--tside:${e.side};--tside2:${e.side2}"><div class="mini">${backSvg(w, hh, e.back)}</div><div class="mini"><svg viewBox="0 0 100 130" width="${w}" height="${hh}"><use href="#k-fraise-3"/></svg></div></div>`; };
 function itemCard(shelf: Shelf, it: Item) {
   const own = owns(S, shelf, it.id, S.stats.legends); const on = equipped(shelf, it.id);
   const art = shelf === 'o' ? `<div class="o-art">${capySvg(it.id)}</div>`
     : shelf === 't' ? `<div class="t-art">${['agrume-3', 'fraise-5', 'feuille-7', 'bonnet'].map((k) => faceSvg(k, 34, 44, it.id as Theme)).join('')}</div>`
+    : shelf === 'k' ? edgeArt(it.id)
+    : shelf === 'd' ? `<div class="d-art">${decorSvg(it.id)}</div>`
     : `<div class="b-art bg-${it.id}"><i></i><i></i><i></i></div>`;
-  const tag = on ? `<span class="own on">${ic('check')} ${shelf === 'o' ? 'Portée' : 'Choisi'}</span>` : own ? '<span class="own">Choisir</span>' : it.legend ? '<span class="price leg">À trouver en jeu</span>' : `<span class="price ${S.carrots >= it.price ? 'ok' : ''}">${CARROT()} ${it.price}</span>`;
-  return `<button class="item ${own ? '' : 'locked'} ${!own && !it.legend && S.carrots >= it.price ? 'can' : ''} ${on ? 'on' : ''} ${it.legend ? 'legend' : ''}" data-s="${shelf}" data-i="${it.id}" aria-label="${it.name}${own ? '' : it.legend ? ' (légendaire)' : ` (${it.price} carottes)`}">${art}<b>${it.name}</b>${tag}</button>`;
+  const tag = on ? `<span class="own on">${ic('check')} ${shelf === 'o' ? 'Portée' : shelf === 'd' ? 'Affiché' : 'Choisi'}</span>` : own ? `<span class="own">${shelf === 'd' ? 'Afficher' : 'Choisir'}</span>` : it.legend ? '<span class="price leg">À trouver en jeu</span>' : `<span class="price ${S.carrots >= it.price ? 'ok' : ''}">${CARROT()} ${it.price}</span>`;
+  return `<button class="item ${own ? '' : 'locked'} ${!own && !it.legend && S.carrots >= it.price ? 'can' : ''} ${on ? 'on' : ''} ${it.legend ? 'legend' : ''}" data-s="${shelf}" data-i="${it.id}" aria-label="${it.name}${own ? '' : it.legend ? ' (légendaire)' : ` (${pl(it.price, 'carotte')})`}">${art}<b>${it.name}</b>${tag}</button>`;
 }
 const MO = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 /** Month calendar of dailies. Missed days of the last REPLAY_DAYS are buttons: replay them (no streak effect). */
@@ -221,7 +238,7 @@ function calHtml(off = 0) {
     if (S.stats.dailyDone.includes(k)) cells += `<i class="ok ${k === today ? 'today' : ''}" title="${lbl} : réussi">${ic('check')}</i>`;
     else if (S.stats.dailyLate.includes(k)) cells += `<i class="ok late" title="${lbl} : rattrapé">${ic('check')}</i>`;
     else if (k === today) cells += `<button class="day today" data-day="${k}" aria-label="Jouer le défi du jour">${d}</button>`;
-    else if (canReplay(S.stats, k, today)) cells += `<button class="day miss" data-day="${k}" aria-label="Rattraper le défi du ${lbl}">${d}</button>`;
+    else if (canReplay(S.stats, k, today, S.firstDay)) cells += `<button class="day miss" data-day="${k}" aria-label="Rattraper le défi du ${lbl}">${d}</button>`;
     else cells += `<i class="${k > today ? 'fut' : 'old'}">${d}</i>`;
   }
   const pre = `${y}-${String(m + 1).padStart(2, '0')}`; const cnt = S.stats.dailyDone.filter((k) => k.startsWith(pre)).length + S.stats.dailyLate.filter((k) => k.startsWith(pre)).length;
@@ -236,23 +253,27 @@ function bindCal(root: HTMLElement, rerender: (off: number) => void) {
 }
 let calOff = 0;
 function calendar(off = 0) {
-  const miss = missedDays(S.stats).length;
+  const miss = missedDays(S.stats, dayKey(), S.firstDay).length;
   openOv(`<h2>Calendrier des défis</h2>${calHtml(off)}<p class="calkey"><span><i class="k ok"></i>réussi le jour même</span><span><i class="k late"></i>rattrapé</span><span><i class="k miss"></i>à rattraper</span></p>
-    <p class="calnote">${miss ? `Touche un jour manqué pour le rattraper : +20 carottes, sans effet sur la série 🔥.` : 'Aucun défi à rattraper sur les 30 derniers jours. Bravo !'}</p><div class="row"><button class="btn" id="cal-x">${ic('back')}<span>Retour</span></button></div>`, 'calov');
+    <p class="calnote">${miss ? `Touche un jour manqué des ${REPLAY_DAYS} derniers jours pour le rattraper : +15 carottes, sans effet sur la série 🔥.` : `Aucun défi à rattraper sur les ${REPLAY_DAYS} derniers jours. Bravo !`}</p><div class="row"><button class="btn" id="cal-x">${ic('back')}<span>Retour</span></button></div>`, 'calov');
   bindCal($('card'), calendar); $('cal-x').onclick = () => { snd.play('click'); closeOv(); };
 }
 function renderColl(tab = collTab) {
   collTab = tab; const tot = totalStars(S); const st = S.stats;
   const tabs = [['outfits', 'Tenues', 'bag'], ['decor', 'Décors', 'leaf'], ['ach', 'Succès', 'trophy'], ['stats', 'Stats', 'chart']];
   let body = '';
-  if (tab === 'outfits') body = `<div class="items">${OUTFITS.map((o) => itemCard('o', o)).join('')}</div>`;
-  else if (tab === 'decor') body = `<h3 class="shelf">Jeux de tuiles</h3><div class="items wide">${THEMES.map((o) => itemCard('t', o)).join('')}</div><h3 class="shelf">Fonds de plateau</h3><div class="items wide">${BACKS.map((o) => itemCard('b', o)).join('')}</div>`;
+  if (tab === 'outfits') {
+    const today = dayKey(); const sea = seasonal(today); const mine = OUTFITS.filter((o) => o.month && !sea.includes(o) && owns(S, 'o', o.id));
+    const until = (o: Item) => MO[(o.month! % 12)].toLowerCase(); // on sale through the month after its own
+    body = `<h3 class="shelf season">De saison <small>une nouvelle tenue chaque mois</small></h3><div class="items">${sea.map((o) => itemCard('o', o).replace('</b>', `</b><small class="until">jusqu'à fin ${until(o)}</small>`)).join('')}</div>
+      <h3 class="shelf">Toujours là</h3><div class="items">${OUTFITS.filter((o) => !o.month).map((o) => itemCard('o', o)).join('')}${mine.map((o) => itemCard('o', o)).join('')}</div>`;
+  } else if (tab === 'decor') body = `<h3 class="shelf">Onsen <small>touche pour afficher ou ranger</small></h3><div class="items">${DECOR.map((o) => itemCard('d', o)).join('')}</div><h3 class="shelf">Dos des tuiles</h3><div class="items">${EDGES.map((o) => itemCard('k', o)).join('')}</div><h3 class="shelf">Jeux de tuiles</h3><div class="items wide">${THEMES.map((o) => itemCard('t', o)).join('')}</div><h3 class="shelf">Fonds de plateau</h3><div class="items wide">${BACKS.map((o) => itemCard('b', o)).join('')}</div>`;
   else if (tab === 'ach') {
     body = `<div class="achs">${ACHIEVEMENTS.map((a) => { const ok = S.ach.includes(a.id); return `<div class="ach ${ok ? 'ok' : ''}"><div class="a-art">${capySvg(a.icon)}</div><div><b>${a.name}</b><p>${a.desc}</p></div>${ok ? `<span class="a-check">${ic('check')}</span>` : ''}</div>`; }).join('')}</div>`;
   } else {
     const cells: [string, string][] = [['Parties gagnées', `${st.won} / ${st.played}`], ['Taux de réussite', st.played ? `${Math.round((st.won / st.played) * 100)} %` : '—'], ['Paires associées', String(st.pairs)], ['Temps de jeu', st.seconds >= 3600 ? `${Math.floor(st.seconds / 3600)} h ${Math.floor((st.seconds % 3600) / 60)} min` : `${Math.floor(st.seconds / 60)} min`],
       ['Meilleur combo', st.bestCombo ? `×${st.bestCombo}` : '—'], ['Niveaux 3 étoiles', String(Object.values(S.stars).filter((x) => x === 3).length)], ['Étoiles', `${tot} / 90`], ['Plus rapide (36+)', st.fastest ? fmt(st.fastest) : '—'],
-      ['Défis réussis', String(st.dailyDone.length)], ['Meilleure série', `${st.bestStreak} j`], ['Record Infini', `${st.endlessBest} manches`], ['Plateaux zen', String(st.zenWon)],
+      ['Défis réussis', String(st.dailyDone.length)], ['Meilleure série', pl(st.bestStreak, 'jour')], ['Record Infini', pl(st.endlessBest, 'manche')], ['Plateaux zen', String(st.zenWon)],
       ['Capydindons', String(st.legends)], ['Carottes gagnées', String(st.carrotsEarned)]];
     body = `<div class="statwrap"><div class="statgrid">${cells.map(([k, v]) => `<div class="sc"><span>${k}</span><b>${v}</b></div>`).join('')}</div>${calHtml(calOff)}</div>`;
   }
@@ -266,20 +287,23 @@ function renderColl(tab = collTab) {
   if (tab === 'stats') bindCal($('v-coll'), (o) => { calOff = o; renderColl('stats'); });
 }
 function equip(shelf: Shelf, id: string) {
-  if (shelf === 'o') S.outfit = id; else if (shelf === 't') { S.theme = id as Theme; buildDefs(); } else { S.bg = id; document.body.dataset.bg = id; }
+  if (shelf === 'o') S.outfit = id; else if (shelf === 't') { S.theme = id as Theme; buildDefs(); } else if (shelf === 'k') { S.edge = id; applyEdge(); }
+  else if (shelf === 'd') S.decor = S.decor.includes(id) ? S.decor.filter((x) => x !== id) : [...S.decor, id];
+  else { S.bg = id; document.body.dataset.bg = id; }
   persist();
 }
 function shopTap(shelf: Shelf, id: string) {
-  const list = shelf === 'o' ? OUTFITS : shelf === 't' ? THEMES : BACKS; const it = list.find((x) => x.id === id)!;
-  if (owns(S, shelf, id, S.stats.legends)) { equip(shelf, id); snd.play('select'); renderColl(); return; }
+  const it = SHELF_ITEMS[shelf].find((x) => x.id === id); if (!it) return;
+  if (owns(S, shelf, id, S.stats.legends)) { equip(shelf, id); snd.play('select'); renderColl(); if (shelf === 'd') toast(S.decor.includes(id) ? `${it.name} : affiché à l'onsen` : `${it.name} : rangé`); return; }
   if (it.legend) { snd.play('invalid'); toast('Associe le capydindon doré en jeu pour l\'obtenir'); return; }
-  if (S.carrots < it.price) { snd.play('invalid'); toast(`Il te manque ${it.price - S.carrots} carottes`); return; }
+  if (!onSale(it)) { snd.play('invalid'); toast(`Revient en ${MO[it.month! - 1].toLowerCase()}`); return; }
+  if (S.carrots < it.price) { snd.play('invalid'); toast(`Il te manque ${pl(it.price - S.carrots, 'carotte')}`); return; }
   snd.play('click');
-  const art = shelf === 'o' ? capySvg(id) : shelf === 't' ? `<div class="t-art big">${['agrume-3', 'fraise-5', 'feuille-7'].map((k) => faceSvg(k, 54, 70, id as Theme)).join('')}</div>` : `<div class="b-art big bg-${id}"><i></i><i></i><i></i></div>`;
-  openOv(`<h2>${it.name}</h2><div class="capy-s buyart">${art}</div><p>Échanger <b>${it.price}</b> carottes ? Il t'en restera ${S.carrots - it.price}.</p>
+  const art = shelf === 'o' ? capySvg(id) : shelf === 'k' ? edgeArt(id, 64, 83) : shelf === 'd' ? `<div class="d-art big">${decorSvg(id)}</div>` : shelf === 't' ? `<div class="t-art big">${['agrume-3', 'fraise-5', 'feuille-7'].map((k) => faceSvg(k, 54, 70, id as Theme)).join('')}</div>` : `<div class="b-art big bg-${id}"><i></i><i></i><i></i></div>`;
+  openOv(`<h2>${it.name}</h2><div class="capy-s buyart">${art}</div><p>Échanger <b>${it.price}</b> carottes ? Il t'en restera ${S.carrots - it.price}.${it.month ? ` <small>Tenue de saison : à toi pour toujours.</small>` : ''}</p>
     <div class="row"><button class="btn" id="b-no">Plus tard</button><button class="btn primary" id="b-yes">${CARROT()}<span>Acheter</span></button></div>`, 'buy');
   $('b-no').onclick = () => { snd.play('click'); closeOv(); };
-  $('b-yes').onclick = () => { if (buy(S, shelf, it)) { equip(shelf, id); snd.play('buy'); buzz(20); const r = $('b-yes').getBoundingClientRect(); fx.burst(r.left + r.width / 2, r.top, 24, ['#FF8A3D', '#3FAE6A', '#FFD93B', '#fff']); closeOv(); renderColl(); toast(`${it.name} : à toi !`); } };
+  $('b-yes').onclick = () => { if (buy(S, shelf, it)) { equip(shelf, id); snd.play('buy'); buzz(20); const r = $('b-yes').getBoundingClientRect(); fx.burst(r.left + r.width / 2, r.top, 24, ['#FF8A3D', '#3FAE6A', '#FFD93B', '#fff']); closeOv(); renderColl(); toast(shelf === 'd' ? `${it.name} : installé à l'onsen !` : `${it.name} : à toi !`); } };
 }
 
 // ---------- MAP
@@ -297,8 +321,8 @@ function renderMap(w = mapWorld) {
     <div class="worldcard"><div class="wc-art">${capySvg(W.mascot)}</div><h2>${W.name}</h2><p>Monde ${w + 1} · ${ws} / 18 ${STAR(true, 'tiny')}</p></div>
     <div class="path">
       <svg class="trail" viewBox="0 0 600 200" preserveAspectRatio="none"><path d="M40 150 C120 40 180 40 240 110 S360 180 420 90 S540 30 570 60" /></svg>
-      ${lv.map((l, i) => { const open = unlocked(S, l.n); const st = S.stars[l.n] ?? 0; const cur = open && !st; return `<button class="node n${i} ${open ? '' : 'locked'} ${cur ? 'cur' : ''}" data-n="${l.n}" ${open ? '' : 'disabled'} aria-label="Niveau ${l.n + 1}">
-        <span class="num">${open ? l.n + 1 : ic('lock')}</span><span class="stars">${[0, 1, 2].map((k) => STAR(k < st)).join('')}</span><span class="lname">${LAYOUTS[l.layout].name} · ${LAYOUTS[l.layout].make().length}</span></button>`; }).join('')}
+      ${lv.map((l, i) => { const open = unlocked(S, l.n); const st = S.stars[l.n] ?? 0; const cur = open && !st; return `<button class="node n${i} ${open ? '' : 'locked'} ${cur ? 'cur' : ''}" data-n="${l.n}" ${open ? '' : 'disabled'} aria-label="Niveau ${l.n + 1} : ${l.name}" title="${LAYOUTS[l.layout].name} · ${LAYOUTS[l.layout].make().length} tuiles">
+        <span class="num">${open ? l.n + 1 : ic('lock')}</span><span class="stars">${[0, 1, 2].map((k) => STAR(k < st)).join('')}</span><span class="lname">${l.name}</span></button>`; }).join('')}
     </div>
   </div>`;
   $('m-back').onclick = () => { snd.play('click'); renderHome(); show('home'); };
@@ -326,15 +350,15 @@ function startPlay(level: PlayLevel, resume?: Run) {
   order.forEach((t, i) => {
     const d = document.createElement('div'); d.className = 'tile enter'; d.style.zIndex = String(i + 1); d.style.animationDelay = `${Math.min(900, i * 7)}ms`;
     d.innerHTML = `<svg viewBox="0 0 100 130"><use href="#k-${t.kind}"/></svg>`; d.dataset.id = String(t.id); d.dataset.kind = t.kind;
-    d.setAttribute('aria-label', KIND_BY_ID.get(t.kind)!.name); g!.els[t.id] = d; board.appendChild(d);
+    d.setAttribute('aria-label', KIND_BY_ID.get(t.kind)!.name); d.setAttribute('role', 'button'); g!.els[t.id] = d; board.appendChild(d);
   });
-  const short = level.mode === 'level' ? WORLDS[level.world].name : level.mode === 'daily' ? (level.late ? 'Rattrapage' : 'Défi du jour') : level.mode === 'zen' ? 'Zen' : `Manche ${level.round! + 1}`;
-  $('g-lvl').innerHTML = (level.mode === 'level' ? `<b>${level.n + 1}</b><span class="ln"> ${WORLDS[level.world].name} · ${LAYOUTS[level.layout].name}</span>` : `<b>${ic(level.mode === 'daily' ? 'cal' : level.mode === 'zen' ? 'leaf' : 'inf')}</b><span class="ln"> ${esc(level.title)}</span>`) + `<span class="ls">${short}</span>`;
+  const short = level.mode === 'level' ? level.name ?? WORLDS[level.world].name : level.mode === 'daily' ? (level.late ? 'Rattrapage' : 'Défi du jour') : level.mode === 'zen' ? 'Zen' : `Manche ${level.round! + 1}`;
+  $('g-lvl').innerHTML = (level.mode === 'level' ? `<b>${level.n + 1}</b><span class="ln"> ${level.name ?? LAYOUTS[level.layout].name} · ${WORLDS[level.world].name}</span>` : `<b>${ic(level.mode === 'daily' ? 'cal' : level.mode === 'zen' ? 'leaf' : 'inf')}</b><span class="ln"> ${esc(level.title)}</span>`) + `<span class="ls">${short}</span>`;
   document.body.dataset.mode = level.mode; if (!resume) S.stats.played++;
   if (!resume && (level.undos ?? -1) >= 0 && !S.seenUndo) { S.seenUndo = true; setTimeout(() => toast(`Annulations limitées : ${level.undos} sur ce plateau. Un combo ×4 en redonne une !`), 700); }
   persist(); $('g-combo').classList.remove('show');
   show('game', level.world); layout(); refresh();
-  clearInterval(timer); timer = window.setInterval(tick, 500); tick();
+  clearInterval(timer); timer = window.setInterval(tick, 500); tick(); portraitPause();
   legendChip(); if (resume) toast('Partie reprise');
 }
 function tick() {
@@ -343,10 +367,11 @@ function tick() {
   if (S.settings.autohint && view === 'game' && !$('ov').classList.contains('show') && Date.now() - g.idle > 20000 && !board.querySelector('.nudge')) { const x = findHint(g.tiles); if (x) x.forEach((t) => g!.els[t.id].classList.add('nudge')); }
 }
 
+/** Board scale from the stage's CURRENT box (never cached): same stage size → same tile size, whatever happened before. */
 function layout() {
-  if (!g) return; const W = stage.clientWidth, H = stage.clientHeight; if (!W || !H) return;
+  if (!g) return; const box = stage.getBoundingClientRect(); const W = Math.round(box.width), H = Math.round(box.height); if (W < 50 || H < 50) return;
   const { cols, rows, x0, y0 } = g.bounds; const ar = 1.3;
-  const pad = H < 420 ? 10 : 28; const u = Math.max(6, Math.min((W - 16) / (cols + 1), (H - pad) / (rows * ar + 1.2)));
+  const pad = H < 420 ? 10 : 28; const u = Math.floor(Math.max(6, Math.min((W - 16) / (cols + 1), (H - pad) / (rows * ar + 1.2))) * 4) / 4; // quarter-px steps: no sub-pixel drift
   const depth = Math.max(2, u * 0.2);
   board.style.setProperty('--u', `${u * 2}px`); board.style.width = `${cols * u}px`; board.style.height = `${rows * u * ar}px`;
   board.style.transform = `translate(-50%,-50%) translate(${depth * 2}px,${depth}px)`;
@@ -357,7 +382,13 @@ function layout() {
     d.style.setProperty('--d', `${depth}px`);
   }
 }
-addEventListener('resize', () => requestAnimationFrame(layout));
+// iOS Safari reports sizes mid-rotation (and animates its toolbars afterwards): re-measure on every signal, on the next two
+// frames, and once more after the rotation has settled. layout() is idempotent, so extra calls are free.
+let relayoutT = 0;
+function relayout() { requestAnimationFrame(() => { layout(); requestAnimationFrame(layout); }); clearTimeout(relayoutT); relayoutT = window.setTimeout(layout, 450); }
+addEventListener('resize', relayout); addEventListener('orientationchange', relayout); window.visualViewport?.addEventListener('resize', relayout);
+screen.orientation?.addEventListener?.('change', relayout);
+if ('ResizeObserver' in window) new ResizeObserver(relayout).observe(stage);
 
 /** First-ever game: make the first pair glow and point at it, until it's matched. */
 function coach() {
@@ -372,11 +403,11 @@ function refresh() {
   if (!g) return; const live = g.tiles.filter((t) => !t.removed);
   document.body.classList.toggle('dim', S.settings.dim);
   for (const t of g.tiles) {
-    const d = g.els[t.id]; const free = !t.removed && isFree(t, live); d.classList.toggle('gone', t.removed); d.classList.toggle('blocked', !t.removed && !free); d.classList.toggle('sel', g.sel === t); d.classList.remove('hint', 'nudge');
+    const d = g.els[t.id]; const free = !t.removed && isFree(t, live); d.classList.toggle('gone', t.removed); d.classList.toggle('blocked', !t.removed && !free); d.classList.toggle('sel', g.sel === t); d.classList.remove('hint', 'nudge'); d.tabIndex = free ? 0 : -1; d.setAttribute('aria-pressed', String(g.sel === t)); d.setAttribute('aria-disabled', String(!free));
     d.classList.toggle('mate', !!(S.settings.hl && g.sel && g.sel !== t && free && matches(g.sel.kind, t.kind)));
     if (d.dataset.kind !== t.kind) { d.dataset.kind = t.kind; d.querySelector('use')!.setAttribute('href', `#k-${t.kind}`); }
   }
-  $('g-pairs').textContent = `${live.length / 2} paires`; $('g-score').textContent = String(g.score);
+  $('g-pairs').textContent = pl(live.length / 2, 'paire'); $('g-score').textContent = String(g.score);
   const hl = g.level.hints - g.hints, sl = g.level.shuffles - g.shuffles;
   const zen = g.level.mode === 'zen'; $('g-hint-n').textContent = zen ? '∞' : String(hl); $('g-shuf-n').textContent = zen ? '∞' : String(sl);
   ($('g-hint') as HTMLButtonElement).disabled = hl <= 0; ($('g-shuf') as HTMLButtonElement).disabled = sl <= 0; const ul = undoLeft(); $('g-undo-n').textContent = ul === Infinity ? '∞' : String(ul); ($('g-undo') as HTMLButtonElement).disabled = !g.history.length || ul <= 0;
@@ -445,16 +476,24 @@ addEventListener('keydown', (e) => {
   const ovOpen = $('ov').classList.contains('show');
   if (e.key === 'Escape') { if (!ovOpen) pause(); else if ($('card').classList.contains('pause')) resume(); return; }
   if (ovOpen || g.pausedAt || e.repeat || e.altKey || e.metaKey) return; // no shortcuts behind a card or while paused
+  const tileEl = (e.target as HTMLElement).closest?.('.tile') as HTMLElement | null;
+  if (tileEl && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tap(g.tiles[+tileEl.dataset.id!]); return; }
+  if (e.ctrlKey) return;
   const k = e.key.toLowerCase(); if (k === 'h') doHint(); else if (k === 'z') doUndo(); else if (k === 's') doShuffle();
+  else if (k === 'p' || (k === ' ' && !(e.target as HTMLElement).closest?.('button,input,textarea'))) { e.preventDefault(); pause(); }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && view === 'game' && g && !g.over && !g.pausedAt) pause(); });
+// the "Tourne ton téléphone" screen hides the board: stop the clock behind it
+const portrait = matchMedia('(orientation:portrait) and (pointer:coarse)');
+const portraitPause = () => { if (portrait.matches && view === 'game' && g && !g.over && !g.pausedAt) pause(); };
+portrait.addEventListener?.('change', portraitPause);
 
 // ---------- overlays
 function openOv(html: string, cls = '') { const c = $('card'); c.className = `card ${cls}`; c.innerHTML = html; $('ov').classList.add('show'); }
 function closeOv() { $('ov').classList.remove('show'); }
 function pause() {
   if (!g || g.over) return; if (!g.pausedAt) g.pausedAt = Date.now();
-  openOv(`<h2>Pause</h2><p class="ptitle">${g.level.mode === 'level' ? `Niveau ${g.level.n + 1} · ${WORLDS[g.level.world].name} · ${LAYOUTS[g.level.layout].name}` : esc(g.level.title)}</p><div class="capy-s">${capySvg('lunettes')}</div><div class="col">
+  openOv(`<h2>Pause</h2><p class="ptitle">${g.level.mode === 'level' ? `Niveau ${g.level.n + 1} · ${g.level.name ?? ''} · ${WORLDS[g.level.world].name}` : esc(g.level.title)}</p><div class="capy-s">${capySvg('lunettes')}</div><div class="col">
     <button class="btn primary" id="p-resume">${ic('play')}<span>Reprendre</span></button>
     <button class="btn" id="p-retry">${ic('retry')}<span>Recommencer</span></button>
     <button class="btn" id="p-settings">${ic('gear')}<span>Réglages</span></button>
@@ -475,47 +514,49 @@ function record(won: boolean, t: number) {
 function win() {
   if (!g) return; g.over = true; const t = elapsed(); const lv = g.level; const mode = lv.mode;
   let st = 0; let sc = scoreOf(g.tiles.length / 2, t, lv.par, g.hints, g.shuffles) + (g.score - g.history.length * 100);
-  let ribbon = ''; let tip = ''; let again = false; let best = 0; let rec = false; let prev = 0; let extra = '';
+  let late = !!lv.late; let ribbon = ''; let tip = ''; let again = false; let best = 0; let rec = false; let prev = 0; let extra = '';
   if (mode === 'level') {
     st = starCount(t, lv.par, g.hints); prev = S.stars[lv.n] ?? 0; best = Math.max(S.best[lv.n] ?? 0, sc); rec = sc > (S.best[lv.n] ?? 0);
     S.stars[lv.n] = Math.max(prev, st); S.best[lv.n] = best; if (st === 3) S.stats.perfect++;
-    ribbon = `Niveau ${lv.n + 1} réussi !`; tip = st < 3 ? `3 étoiles : finir en moins de ${fmt(lv.par)} sans indice.` : 'Parfait, trois étoiles !';
+    ribbon = `${lv.name ?? `Niveau ${lv.n + 1}`} : réussi !`; tip = st < 3 ? `3 étoiles : finir en moins de ${fmt(lv.par)} sans indice.` : 'Parfait, trois étoiles !';
   } else if (mode === 'daily') {
     again = S.stats.dailyDone.includes(lv.date!) || S.stats.dailyLate.includes(lv.date!);
+    // a daily started before midnight and won after it is no longer "today's": it counts as a catch-up (if still allowed), never as a streak day
+    if (!lv.late && lv.date !== dayKey()) { late = true; if (!again && !canReplay(S.stats, lv.date!, dayKey(), S.firstDay)) again = true; }
     st = starCount(t, lv.par, g.hints); const k = `d${lv.date}`; const bestD = (S.best as Record<string, number>)[k] ?? 0; best = Math.max(bestD, sc); rec = sc > bestD; prev = bestD; (S.best as Record<string, number>)[k] = best;
-    if (lv.late) { recordLate(S.stats, lv.date!); ribbon = `Défi du ${frDate(lv.date!)} rattrapé !`; const left = missedDays(S.stats).length; tip = `Les défis rattrapés comptent au calendrier, pas dans la série.${left ? ` Encore ${left} à rattraper.` : ''}`; }
-    else { const streak = recordDaily(S.stats, lv.date!); ribbon = 'Défi du jour réussi !'; tip = `Série en cours : ${streak} jour${streak > 1 ? 's' : ''} 🔥 · Reviens demain pour un nouveau plateau.`; }
+    if (late) { if (!again) recordLate(S.stats, lv.date!); ribbon = `Défi du ${frDate(lv.date!)} rattrapé !`; const left = missedDays(S.stats, dayKey(), S.firstDay).length; tip = `Les défis rattrapés comptent au calendrier, pas dans la série.${left ? ` Encore ${left} à rattraper.` : ''}`; }
+    else { const streak = recordDaily(S.stats, lv.date!); ribbon = 'Défi du jour réussi !'; tip = `Série en cours : ${pl(streak, 'jour')} 🔥 · Reviens demain pour un nouveau plateau.`; }
   } else if (mode === 'endless') {
     st = starCount(t, lv.par, g.hints); S.stats.endlessBest = Math.max(S.stats.endlessBest, lv.round! + 1); best = S.stats.endlessBest;
     ribbon = `Manche ${lv.round! + 1} réussie !`; tip = `Manche suivante : ${LAYOUTS[endlessLevel(lv.round! + 1, endlessSeed).layout].name}, ${LAYOUTS[endlessLevel(lv.round! + 1, endlessSeed).layout].make().length} tuiles.`;
   } else { S.stats.zenWon++; ribbon = 'Plateau vidé'; tip = 'Respire… un autre plateau t\'attend.'; }
-  let gain = carrotReward({ mode, late: lv.late, again, stars: st, first: mode === 'level' && prev === 0, round: lv.round, diff: lv.diff, streak: S.stats.dailyStreak, legend: g.legends > 0 });
+  let gain = carrotReward({ mode, late, again, stars: st, first: mode === 'level' && prev === 0, round: lv.round, diff: lv.diff, streak: S.stats.dailyStreak, legend: g.legends > 0 });
   S.stats.carrotsEarned += gain; const got = record(true, t); gain += got.length * 20; S.stats.carrotsEarned += got.length * 20; S.carrots += gain; persist();
   const legendWin = g.legends > 0; const firstLegend = g.legends > 0 && S.stats.legends === 1 && !S.owned.includes('o:capydindon'); if (firstLegend) { S.owned.push('o:capydindon'); persist(); }
   const outs = firstLegend ? [OUTFITS.find((o) => o.id === 'capydindon')!] : [];
   if (got.length || outs.length) extra = `<div class="unlocks">${outs.map((o) => `<div class="unl leg">${capySvg(o.id)}<span>Tenue légendaire<br><b>${o.name}</b></span></div>`).join('')}${got.slice(0, 3 - outs.length).map((id) => { const a = ACHIEVEMENTS.find((x) => x.id === id)!; return `<div class="unl ach">${capySvg(a.icon)}<span>Succès<br><b>${a.name}</b></span></div>`; }).join('')}${got.length + outs.length > 3 ? `<div class="unl more">+${got.length + outs.length - 3} succès</div>` : ''}</div>`;
   snd.play('win'); fx.confetti(); buzz(40);
   const stTxt = '⭐'.repeat(st) + '☆'.repeat(3 - st); const L = LAYOUTS[lv.layout].name;
-  const [shTxt, shUrl] = mode === 'daily' ? [`Mahjong Capybaras 🦫 · Défi du ${frDate(lv.date!)}${lv.late ? ' (rattrapé)' : ''}\n${stTxt} en ${fmt(t)} · 💡 ${g.hints} indice${g.hints > 1 ? 's' : ''}\n${lv.late ? '📅 Rattrapé depuis le calendrier' : `🔥 Série de ${S.stats.dailyStreak} jour${S.stats.dailyStreak > 1 ? 's' : ''}`}${legendWin ? ' · 🦃 capydindon doré trouvé !' : ''}`, lv.late ? `${base()}?mode=daily&day=${lv.date}` : `${base()}?mode=daily`]
-    : mode === 'level' ? [`J'ai fini le niveau ${lv.n + 1} (${L}) de Mahjong Capybaras en ${fmt(t)} ${stTxt}. À toi de battre mon temps !`, `${base()}?level=${lv.n}`]
-    : mode === 'zen' ? [`J'ai vidé le plateau « ${L} » (${DIFFS.find((d) => d.id === (lv.diff ?? 'moyen'))!.name}) de Mahjong Capybaras 🧘 en ${fmt(t)}. Le même plateau pour toi :`, `${base()}?mode=zen&seed=${lv.seed}&diff=${lv.diff ?? 'moyen'}&layout=${lv.layout}`]
+  const [shTxt, shUrl] = mode === 'daily' ? [`Mahjong Capybaras 🦫 · Défi du ${frDate(lv.date!)}${lv.late ? ' (rattrapé)' : ''}\n${stTxt} en ${fmt(t)} · 💡 ${pl(g.hints, 'indice')}\n${lv.late ? '📅 Rattrapé depuis le calendrier' : `🔥 Série de ${pl(S.stats.dailyStreak, 'jour')}`}${legendWin ? ' · 🦃 capydindon doré trouvé !' : ''}`, lv.late ? `${base()}?mode=daily&day=${lv.date}` : `${base()}?mode=daily`]
+    : mode === 'level' ? [`J'ai fini « ${lv.name ?? L} » (niveau ${lv.n + 1}) de Mahjong Capybaras en ${fmt(t)} ${stTxt}. À toi de battre mon temps !`, `${base()}?level=${lv.n}`]
+    : mode === 'zen' ? [`J'ai vidé le plateau « ${L} » (${DIFFS.find((d) => d.id === (lv.diff ?? 'moyen'))!.name}) de Mahjong Capybaras 🧘 en ${fmt(t)}. Le même plateau pour toi :`, `${base()}${zenLink(lv)}`]
     : [`Manche ${lv.round! + 1} réussie en mode Infini dans Mahjong Capybaras 🦫. Jusqu'où iras-tu ?`, base()];
   const aff = affordable();
   const nextN = mode === 'level' && lv.n + 1 < LEVELS.length ? lv.n + 1 : -1;
-  const nextLate = lv.late ? missedDays(S.stats)[0] : undefined;
+  const nextLate = late ? missedDays(S.stats, dayKey(), S.firstDay)[0] : undefined;
   const next = mode === 'endless' ? 'Manche suivante' : mode === 'zen' ? 'Nouveau plateau' : nextLate ? 'Autre défi' : nextN >= 0 ? 'Suivant' : '';
   const statsRow = mode === 'zen' ? `<div class="stats"><div><span>Paires</span><b>${g.tiles.length / 2}</b></div><div><span>Temps</span><b>${fmt(t)}</b></div></div>`
-    : `<div class="stats"><div><span>Temps</span><b>${fmt(t)}</b></div><div><span>Score</span><b>${sc}</b></div><div><span>${mode === 'endless' ? 'Record' : 'Meilleur'}</span><b>${mode === 'endless' ? `${best} m.` : best}</b></div></div>`;
+    : `<div class="stats"><div><span>Temps</span><b>${fmt(t)}</b></div><div><span>Score</span><b>${sc}</b></div><div><span>${mode === 'endless' ? 'Record' : 'Meilleur'}</span><b>${mode === 'endless' ? pl(best, 'manche') : best}</b></div></div>`;
   setTimeout(() => {
     openOv(`<div class="ribbon">${ribbon}</div><div class="capy-s win">${capySvg(mode === 'zen' ? 'lotus' : S.outfit === 'agrume' ? 'couronne' : S.outfit)}</div>
       ${mode === 'zen' ? '' : `<div class="bigstars">${[0, 1, 2].map((k) => STAR(k < st, `s${k}`)).join('')}</div>`}
-      ${statsRow}<div class="earn">${CARROT()}<b>+${gain}</b> carottes${legendWin ? ' <span class="legtag">capydindon +25</span>' : ''}${aff ? `<button class="afford" id="w-shop">De quoi t'offrir : ${aff.name}</button>` : ''}</div>${rec && prev ? '<p class="rec">Nouveau record !</p>' : ''}${extra}
+      ${statsRow}<div class="earn">${CARROT()}<b>+${gain}</b> ${gain > 1 ? 'carottes' : 'carotte'}${legendWin ? ' <span class="legtag">capydindon +25</span>' : ''}${aff ? `<button class="afford" id="w-shop">De quoi t'offrir : ${aff[1].name}</button>` : ''}</div>${rec && prev ? '<p class="rec">Nouveau record !</p>' : ''}${extra}
       <p class="tipline">${tip}</p>
       <div class="row">${mode === 'daily' ? '' : `<button class="iconbtn share" id="w-share" aria-label="Partager mon résultat">${ic('share')}</button>`}<button class="btn" id="w-map">${ic(mode === 'level' ? 'map' : 'home')}<span>${mode === 'level' ? 'Niveaux' : 'Modes'}</span></button>${mode === 'endless' ? '' : `<button class="btn" id="w-retry">${ic('retry')}<span>Rejouer</span></button>`}
       ${mode === 'daily' ? `<button class="btn ${next ? '' : 'primary'}" id="w-share">${ic('share')}<span>Partager</span></button>` : ''}${next ? `<button class="btn primary" id="w-next">${ic('next')}<span>${next}</span></button>` : ''}</div>`, `win ${extra ? 'has-unl' : ''}`);
     if (extra) setTimeout(() => snd.play('unlock'), 1300);
     if (mode !== 'zen') [0, 1, 2].forEach((k) => { if (k < st) setTimeout(() => snd.play('star', k), 350 + k * 280); });
-    $('w-share').onclick = () => void share(shTxt, shUrl); if ($('w-shop')) $('w-shop').onclick = () => { snd.play('click'); closeOv(); renderColl(THEMES.includes(aff!) || BACKS.includes(aff!) ? 'decor' : 'outfits'); show('coll'); };
+    $('w-share').onclick = () => void share(shTxt, shUrl); if ($('w-shop')) $('w-shop').onclick = () => { snd.play('click'); closeOv(); renderColl(shopTab(aff![0])); show('coll'); };
     $('w-map').onclick = () => leave(); if ($('w-retry')) $('w-retry').onclick = () => startPlay(lv);
     if (next) $('w-next').onclick = () => (mode === 'endless' ? startPlay(endlessLevel(lv.round! + 1, endlessSeed)) : mode === 'zen' ? startPlay(zenLevel(newSeed(), lv.diff)) : nextLate ? startPlay(dailyLevel(nextLate, true)) : startLevel(nextN));
   }, 700);
@@ -532,12 +573,15 @@ function noMoves(knownDead = false) {
   hold();
   if (canShuf) openOv(`<h2>Plus de paires</h2><div class="capy-s">${capySvg('bonnet')}</div><p>Aucune paire libre. Mélange les tuiles restantes, ou annule un coup.</p>
     <div class="row">${undoBtn}<button class="btn primary" id="n-shuf">${ic('shuffle')}<span>Mélanger${zen ? '' : ` (${g.level.shuffles - g.shuffles})`}</span></button></div>${exits}`, 'lose');
-  else if (dead && (canUndo || hasPair)) openOv(`<h2>Tuiles coincées</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>Même mélangées, les tuiles restantes ne pourront plus toutes partir (elles sont empilées). Ton mélange n'a pas été utilisé.</p>
-    <div class="row">${canUndo ? undoBtn : ''}${hasPair ? `<button class="btn" id="n-cont">${ic('play')}<span>Continuer</span></button>` : ''}</div>${exits}`, 'lose');
+  else if (dead && hasPair) openOv(`<h2>Tuiles coincées</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>Même mélangées, les tuiles restantes ne pourront plus toutes partir (elles sont empilées). Ton mélange n'a pas été utilisé.</p>
+    <div class="row">${canUndo ? undoBtn : ''}<button class="btn" id="n-cont">${ic('play')}<span>Continuer</span></button></div>${exits}`, 'lose');
   else {
-    g.over = true; snd.play('lose'); record(false, elapsed());
-    openOv(`<h2>${endl ? 'Fin de la course' : 'Perdu…'}</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>${endl ? `Plus de paires possibles. Manche${(g.level.round ?? 0) > 1 ? 's' : ''} réussie${(g.level.round ?? 0) > 1 ? 's' : ''} : <b>${g.level.round}</b> · Record : <b>${S.stats.endlessBest}</b>` : dead ? 'Les tuiles restantes sont coincées : impossible de vider le plateau. Le capybara t\'attend pour réessayer !' : 'Plus de paires et plus de mélanges. Le capybara t\'attend pour réessayer !'}</p>
-    <div class="row"><button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>${g.level.mode === 'level' ? 'Niveaux' : 'Modes'}</span></button><button class="btn primary" id="n-retry">${ic('retry')}<span>${endl ? 'Nouvelle course' : 'Réessayer'}</span></button></div>`, 'lose');
+    // End screen. Getting stuck after a few unlucky moves is part of the game: no rescue, but undo stays possible while the budget allows.
+    if (!canUndo) { g.over = true; snd.play('lose'); record(false, elapsed()); } else snd.play('invalid');
+    const why = endl ? `Plus de paires possibles. ${(g.level.round ?? 0) > 1 ? 'Manches réussies' : 'Manche réussie'} : <b>${g.level.round}</b> · Record : <b>${S.stats.endlessBest}</b>`
+      : dead ? `Les tuiles restantes sont coincées : impossible de vider le plateau.${zen ? '' : ' Ton mélange n\'a pas été utilisé.'}` : 'Plus de paires libres et plus de mélanges.';
+    openOv(`<h2>${endl ? 'Fin de la course' : 'Plus de coups'}</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>${why}${canUndo ? ' Tu peux encore annuler un coup.' : ' Le capybara t\'attend pour réessayer !'}</p>
+    <div class="row">${canUndo ? undoBtn : ''}<button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>Quitter</span></button><button class="btn primary" id="n-retry">${ic('retry')}<span>${endl ? 'Nouvelle course' : 'Recommencer'}</span></button></div>`, 'lose');
   }
   const q = (id: string) => document.getElementById(id);
   q('n-shuf')?.addEventListener('click', doShuffle); q('n-undo')?.addEventListener('click', doUndo);
@@ -549,14 +593,36 @@ function settings(back?: () => void) {
   const row = (id: string, label: string, on: boolean) => `<label class="set"><span>${label}</span><button class="sw ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${on}"><i></i></button></label>`;
   const vol = (id: string, label: string, v: number, on: boolean) => `<label class="set vol${on ? '' : ' off'}"><span>${label}</span><input type="range" id="${id}" min="0" max="100" step="5" value="${Math.round(v * 100)}" aria-label="${label}"></label>`;
   openOv(`<h2>Réglages</h2><div class="sets">${row('s-sfx', 'Effets sonores', S.settings.sfx)}${row('s-music', 'Musique lo-fi', S.settings.music)}${vol('v-sfx', 'Volume des effets', S.settings.sfxVol, S.settings.sfx)}${vol('v-music', 'Volume de la musique', S.settings.musicVol, S.settings.music)}${row('s-dim', 'Assombrir les tuiles bloquées', S.settings.dim)}${row('s-hl', 'Montrer les paires possibles', S.settings.hl)}${row('s-auto', 'Indice automatique (20 s)', S.settings.autohint)}${row('s-vib', 'Vibrations', S.settings.vibrate)}</div>
-    <div class="row"><button class="btn" id="s-share">${ic('share')}<span>Partager le jeu</span></button><button class="btn danger" id="s-reset">Effacer la progression</button><button class="btn primary" id="s-ok">OK</button></div><p class="credits">Musique et sons créés dans le jeu · Police Fredoka (OFL)</p>`, 'settings');
+    <div class="row"><button class="btn" id="s-code">${ic('save')}<span>Code de sauvegarde</span></button><button class="btn" id="s-share">${ic('share')}<span>Partager le jeu</span></button><button class="btn danger" id="s-reset">Effacer la progression</button><button class="btn primary" id="s-ok">OK</button></div><p class="credits">Musique et sons créés dans le jeu · Police Fredoka (OFL)</p>`, 'settings');
   const bind = (id: string, key: 'sfx' | 'music' | 'dim' | 'vibrate' | 'hl' | 'autohint', after?: (v: boolean) => void) => { $(id).onclick = () => { S.settings[key] = !S.settings[key]; persist(); $(id).classList.toggle('on', S.settings[key]); $(id).setAttribute('aria-checked', String(S.settings[key])); after?.(S.settings[key]); snd.play('click'); }; };
   bind('s-sfx', 'sfx', (v) => { snd.sfxOn = v; $('v-sfx').parentElement!.classList.toggle('off', !v); }); bind('s-music', 'music', (v) => { snd.setMusic(v); $('v-music').parentElement!.classList.toggle('off', !v); syncMusicBtns(); });
   const slide = (id: string, key: 'musicVol' | 'sfxVol') => { const el = $(id) as HTMLInputElement; const set = () => { S.settings[key] = +el.value / 100; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol); }; el.oninput = set; el.onchange = () => { set(); persist(); syncMusicBtns(); if (key === 'sfxVol') snd.play('select'); }; };
   slide('v-sfx', 'sfxVol'); slide('v-music', 'musicVol'); bind('s-dim', 'dim', () => refresh()); bind('s-vib', 'vibrate'); bind('s-hl', 'hl', () => refresh()); bind('s-auto', 'autohint', () => g && (g.idle = Date.now()));
-  $('s-reset').onclick = () => { if ($('s-reset').dataset.c) { const st = reset(); Object.assign(S, st); persist(); snd.sfxOn = S.settings.sfx; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol); snd.setMusic(S.settings.music); syncMusicBtns(); toast('Progression effacée'); renderHome(); show('home'); } else { $('s-reset').dataset.c = '1'; $('s-reset').textContent = 'Confirmer ?'; } };
+  $('s-reset').onclick = () => { if ($('s-reset').dataset.c) { const st = reset(); Object.assign(S, st); S.firstDay = dayKey(); applyEdge(); persist(); snd.sfxOn = S.settings.sfx; snd.setVolumes(S.settings.musicVol, S.settings.sfxVol); snd.setMusic(S.settings.music); syncMusicBtns(); toast('Progression effacée'); renderHome(); show('home'); } else { $('s-reset').dataset.c = '1'; $('s-reset').textContent = 'Confirmer ?'; } };
+  $('s-code').onclick = () => { snd.play('click'); saveCode(() => settings(back)); };
   $('s-share').onclick = () => void share('Mahjong Capybaras 🦫 : un mahjong solitaire avec des capybaras.', base());
   $('s-ok').onclick = () => { snd.play('click'); if (back) back(); else closeOv(); };
+}
+/** Save code: the whole progress as text, to copy somewhere safe or move to another device/browser. */
+function saveCode(back: () => void) {
+  const code = exportCode(S);
+  openOv(`<h2>Code de sauvegarde</h2><p class="ptitle">Garde ce code en lieu sûr (notes, message à toi-même) : il contient toute ta progression. Colle-le sur un autre appareil pour la retrouver.</p>
+    <div class="codebox"><textarea id="sc-out" readonly rows="3" aria-label="Ton code de sauvegarde" spellcheck="false"></textarea><button class="btn primary" id="sc-copy">${ic('check')}<span>Copier</span></button></div>
+    <h3 class="shelf">Importer un code</h3><div class="codebox"><textarea id="sc-in" rows="3" placeholder="Colle ici un code CAPY1-…" aria-label="Code à importer" spellcheck="false" autocomplete="off"></textarea><button class="btn" id="sc-imp">${ic('next')}<span>Importer</span></button></div>
+    <p class="scmsg" id="sc-msg" role="status" aria-live="polite"></p><div class="row"><button class="btn" id="sc-x">${ic('back')}<span>Retour</span></button></div>`, 'savecode');
+  const out = $('sc-out') as HTMLTextAreaElement; out.value = code; const msg = $('sc-msg'); const inp = $('sc-in') as HTMLTextAreaElement;
+  const say = (t: string, ok = false) => { msg.textContent = t; msg.classList.toggle('ok', ok); };
+  $('sc-copy').onclick = () => { snd.play('click'); out.select(); navigator.clipboard?.writeText(code).then(() => say('Code copié !', true), () => say('Copie impossible : sélectionne le texte et copie-le à la main.')) ?? say('Sélectionne le texte et copie-le à la main.'); };
+  inp.oninput = () => { delete $('sc-imp').dataset.c; $('sc-imp').querySelector('span')!.textContent = 'Importer'; say(''); };
+  $('sc-imp').onclick = () => {
+    const r = importCode(inp.value); if ('error' in r) { snd.play('invalid'); say(r.error); return; }
+    const b = $('sc-imp');
+    if (!b.dataset.c) { b.dataset.c = '1'; b.querySelector('span')!.textContent = 'Confirmer'; say(`Code valide : ${pl(totalStars(r.save), 'étoile')}, ${pl(r.save.carrots, 'carotte')}. Il remplacera ta progression actuelle (elle reste mise de côté).`, true); return; }
+    try { localStorage.setItem(`${KEY}.avant-import`, JSON.stringify(S)); } catch { /* best effort */ }
+    if (!save(r.save)) { say('Import impossible : stockage plein ou bloqué.'); return; }
+    location.reload();
+  };
+  $('sc-x').onclick = () => { snd.play('click'); back(); };
 }
 function howTo(then?: () => void) {
   const tile = (k: string, cls = '') => `<div class="ht-tile ${cls}"><svg viewBox="0 0 100 130"><use href="#k-${k}"/></svg></div>`;
@@ -588,7 +654,7 @@ function howTo(then?: () => void) {
 };
 
 // ---------- boot
-document.body.dataset.bg = S.bg; renderHome(); setWorld(0); show('home');
+document.body.dataset.bg = S.bg; applyEdge(); renderHome(); setWorld(0); show('home');
 const { deep, bad } = parseDeep(location.search);
 if (location.search) history.replaceState(null, '', location.pathname); // a reload returns home (with "Reprendre") instead of restarting the link
 if (deep?.kind === 'level') {
@@ -596,11 +662,12 @@ if (deep?.kind === 'level') {
   else { const last = Math.max(0, LEVELS.findIndex((l) => !unlocked(S, l.n)) - 1); renderMap(LEVELS[last].world); show('map'); toast(`Le niveau ${deep.n + 1} n'est pas encore débloqué : termine d'abord les précédents !`, 3000); }
 } else if (deep?.kind === 'daily') {
   const today = dayKey(); const k = deep.day;
-  if (k && k < today && canReplay(S.stats, k, today)) startPlay(dailyLevel(k, true));
+  if (k && k < today && canReplay(S.stats, k, today, S.firstDay)) startPlay(dailyLevel(k, true));
   else { startPlay(dailyLevel(today)); if (k && k !== today) toast('Ce défi ne peut pas être rattrapé : voici celui du jour', 3000); }
 } else if (deep?.kind === 'zen') {
-  const z = zenLevel(deep.seed, deep.diff); const lay = deep.layout;
-  startPlay(lay ? { ...z, layout: lay, title: `Zen · ${LAYOUTS[lay].name}`, legend: deep.legend ? 1 : z.legend } : z);
+  // with a layout, the link carries the exact board (no fairness re-pick): everyone gets the same tiles
+  const z = deep.layout ? zenShared(deep.seed, deep.diff, deep.layout) : zenLevel(deep.seed, deep.diff);
+  startPlay(deep.legend ? { ...z, legend: 1 } : z);
 } else if (deep?.kind === 'endless') { endlessSeed = newSeed(); startPlay(endlessLevel(0, endlessSeed)); }
 if (bad) setTimeout(() => toast('Lien invalide : retour à l\'accueil', 2500), 300);
 if (LOADED.status === 'backup') setTimeout(() => toast('Sauvegarde abîmée : ta copie de secours a été restaurée', 4000), 400);
@@ -609,5 +676,28 @@ booted = true;
 // Home illustration: lazy-loaded after first paint (decoded off the critical path), then faded in.
 const HOME_BG = new URL(`${import.meta.env.BASE_URL}home-bg.webp`, document.baseURI).href;
 const loadHomeBg = () => { const im = new Image(); im.decoding = 'async'; im.src = HOME_BG; im.decode().then(() => { document.documentElement.style.setProperty('--home-bg', `url("${HOME_BG}")`); document.body.classList.add('home-art'); }).catch(() => {}); };
-if (document.readyState === 'complete') setTimeout(loadHomeBg, 50); else addEventListener('load', () => setTimeout(loadHomeBg, 50));
-if (import.meta.env.PROD && 'serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+loadHomeBg(); // preloaded with fetchpriority=high in index.html: decoding starts now, off the main thread
+// Ask the browser to keep our storage (Safari/Chrome may otherwise evict it); silent, no prompt on most browsers.
+if (S.stats.played > 0) navigator.storage?.persist?.().catch(() => {});
+/** "New version" toast: the new service worker waits until the player taps Recharger (never mid-game by surprise). */
+function updateToast(w: ServiceWorker) {
+  if (document.getElementById('upd')) return;
+  const box = document.createElement('div'); box.className = 'upd'; box.id = 'upd'; box.setAttribute('role', 'status');
+  const txt = document.createElement('span'); txt.textContent = 'Nouvelle version disponible';
+  const go = document.createElement('button'); go.className = 'btn primary'; go.textContent = 'Recharger';
+  const x = document.createElement('button'); x.className = 'iconbtn'; x.setAttribute('aria-label', 'Plus tard'); x.textContent = '×';
+  go.onclick = () => { snapshot(); go.disabled = true; w.postMessage('skip'); };
+  x.onclick = () => box.remove();
+  box.append(txt, go, x); document.body.append(box);
+}
+(window as unknown as { __upd: typeof updateToast }).__upd = updateToast;
+if (import.meta.env.PROD && 'serviceWorker' in navigator) addEventListener('load', () => {
+  let reloading = false; const hadCtl = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadCtl && !reloading) { reloading = true; location.reload(); } });
+  navigator.serviceWorker.register('./sw.js').then((reg) => {
+    const watch = (w: ServiceWorker | null) => w?.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) updateToast(w); });
+    if (reg.waiting && navigator.serviceWorker.controller) updateToast(reg.waiting);
+    reg.addEventListener('updatefound', () => watch(reg.installing));
+    setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+  }).catch(() => {});
+});

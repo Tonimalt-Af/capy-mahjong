@@ -18,29 +18,32 @@ const DAILY_LAYOUTS = ['pyramide', 'fleur', 'papillon', 'forteresse', 'montagne'
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 export const frDate = (k: string) => { const [, m, d] = k.split('-').map(Number); return `${d === 1 ? '1er' : d} ${MOIS[m - 1]}`; };
 
+/** `min` < 0: use the seed as is (a shared link already carries the final, fair seed). */
 const mk = (layout: string, seed: number, world: number, extra: Partial<PlayLevel> & { mode: Mode; title: string }, min = 0.4): PlayLevel => {
   const pos = LAYOUTS[layout].make(); const tiles = pos.length;
-  return { n: -1, index: 0, world, layout, seed: fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, undos: 5, legend: 0.25, ...extra };
+  return { n: -1, index: 0, world, layout, seed: min < 0 ? seed >>> 0 : fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, undos: 5, legend: 0.1, ...extra };
 };
-/** Chance that the golden capydindon pair hides in a campaign level (deterministic per seed). */
-export const LEVEL_LEGEND = 0.2;
+/** Chance that the golden capydindon pair hides in a board (deterministic per seed). Steering 2026-10-30: rarer everywhere
+ * (levels 20% → 8%, endless/zen 25% → 10%, daily 100% → 35%). */
+export const LEVEL_LEGEND = 0.08;
+export const DAILY_LEGEND = 0.35;
 
 // ---------- difficulty (zen / free play), inspired by Microsoft Mahjong's 4 tiers
 export type Diff = 'facile' | 'moyen' | 'difficile' | 'expert';
 export const DIFFS: { id: Diff; name: string; pool: string[]; min: number; desc: string }[] = [
-  { id: 'facile', name: 'Facile', pool: ['galet', 'pont', 'pyramide', 'papillon'], min: 0.7, desc: '36 à 68 tuiles' },
-  { id: 'moyen', name: 'Moyen', pool: ['fleur', 'coeur', 'ours', 'chat', 'champignon'], min: 0.5, desc: '72 à 90 tuiles' },
+  { id: 'facile', name: 'Facile', pool: ['galet', 'carotte', 'pont', 'yuzu', 'pyramide', 'papillon'], min: 0.7, desc: '36 à 84 tuiles' },
+  { id: 'moyen', name: 'Moyen', pool: ['fleur', 'coeur', 'nuage', 'ours', 'chat', 'champignon'], min: 0.5, desc: '72 à 90 tuiles' },
   { id: 'difficile', name: 'Difficile', pool: ['forteresse', 'etoile', 'montagne', 'capy'], min: 0.3, desc: '82 à 120 tuiles' },
   { id: 'expert', name: 'Expert', pool: ['tortue', 'capy', 'montagne', 'etoile'], min: 0, desc: 'Grands plateaux pièges' },
 ];
 /** Same board for everyone on a given day. */
 export function dailyLevel(key = dayKey(), late = false): PlayLevel {
   const h = hash('capy-daily-' + key);
-  return mk(DAILY_LAYOUTS[h % DAILY_LAYOUTS.length], h, (h >>> 8) % 5, { mode: 'daily', title: `Défi du ${frDate(key)}`, date: key, hints: 1, shuffles: 1, legend: 1, ...(late ? { late: true, title: `Rattrapage · ${frDate(key)}` } : {}) });
+  return mk(DAILY_LAYOUTS[h % DAILY_LAYOUTS.length], h, (h >>> 8) % 5, { mode: 'daily', title: `Défi du ${frDate(key)}`, date: key, hints: 1, shuffles: 1, legend: DAILY_LEGEND, ...(late ? { late: true, title: `Rattrapage · ${frDate(key)}` } : {}) });
 }
 /** Endless run: boards grow with the round, world rotates. */
 export function endlessLevel(round: number, seed: number): PlayLevel {
-  const ladder = ['galet', 'pont', 'pyramide', 'fleur', 'coeur', 'ours', 'champignon', 'forteresse', 'capy', 'tortue'];
+  const ladder = ['galet', 'carotte', 'pont', 'pyramide', 'yuzu', 'fleur', 'nuage', 'champignon', 'capy', 'tortue'];
   const layout = ladder[Math.min(ladder.length - 1, Math.floor(round / 2))];
   return mk(layout, (seed + round * 7907) >>> 0, round % 5, { mode: 'endless', title: `Infini · manche ${round + 1}`, round, hints: round < 4 ? 2 : 1, shuffles: round < 6 ? 2 : 1 });
 }
@@ -48,6 +51,13 @@ export function zenLevel(seed: number, diff: Diff = 'moyen'): PlayLevel {
   const D = DIFFS.find((d) => d.id === diff) ?? DIFFS[1]; const layout = D.pool[seed % D.pool.length];
   return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, undos: -1, diff: D.id }, D.min);
 }
+/** The exact board of a shared zen link: final seed + layout, no fairness re-pick → same board for everyone. */
+export function zenShared(seed: number, diff: Diff, layout: string): PlayLevel {
+  const D = DIFFS.find((d) => d.id === diff) ?? DIFFS[1];
+  return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, undos: -1, diff: D.id }, -1);
+}
+/** Share link of a zen board (carries the final seed and layout). */
+export const zenLink = (lv: PlayLevel) => `?mode=zen&seed=${lv.seed}&diff=${lv.diff ?? 'moyen'}&layout=${lv.layout}`;
 
 /** Record a completed daily; returns updated streak. */
 export function recordDaily(s: Stats, key: string) {
@@ -56,20 +66,26 @@ export function recordDaily(s: Stats, key: string) {
   s.dailyDone = [...s.dailyDone, key].slice(-400); s.bestStreak = Math.max(s.bestStreak, s.dailyStreak);
   return s.dailyStreak;
 }
-/** How far back missed dailies can be replayed from the calendar. */
-export const REPLAY_DAYS = 30;
-/** Past days (newest first, within REPLAY_DAYS) whose daily was neither won on the day nor replayed. */
-export function missedDays(s: Stats, today = dayKey(), span = REPLAY_DAYS) {
-  const out: string[] = []; for (let i = 1; i <= span; i++) { const k = addDays(today, -i); if (!s.dailyDone.includes(k) && !s.dailyLate.includes(k)) out.push(k); } return out;
+/** How far back missed dailies can be replayed from the calendar (a week: catching up, not farming). */
+export const REPLAY_DAYS = 7;
+/** Past days (newest first, within REPLAY_DAYS, and never before the player's first day) whose daily was neither won on the day nor replayed. */
+export function missedDays(s: Stats, today = dayKey(), since?: string, span = REPLAY_DAYS) {
+  const out: string[] = []; for (let i = 1; i <= span; i++) { const k = addDays(today, -i); if (since && k < since) break; if (!s.dailyDone.includes(k) && !s.dailyLate.includes(k)) out.push(k); } return out;
 }
-export const canReplay = (s: Stats, key: string, today = dayKey()) => missedDays(s, today).includes(key);
+export const canReplay = (s: Stats, key: string, today = dayKey(), since?: string) => missedDays(s, today, since).includes(key);
+/** First day of play for an existing save (set once): the earliest daily on record or, for anyone who has already played, a week ago; else today. */
+export function firstDayOf(s: Stats, today = dayKey()) {
+  const d = [...s.dailyDone, ...s.dailyLate].filter((k) => k < today).sort()[0];
+  const cands = [d, s.played > 0 ? addDays(today, -REPLAY_DAYS) : undefined].filter((x): x is string => !!x).sort();
+  return cands[0] ?? today;
+}
 /** A replayed past daily: marked on the calendar, but never touches the streak (no streak repair). */
 export function recordLate(s: Stats, key: string) { if (!s.dailyLate.includes(key) && !s.dailyDone.includes(key)) s.dailyLate = [...s.dailyLate, key].slice(-400); }
 /** Streak currently alive (today or yesterday done). */
 export const liveStreak = (s: Stats, today = dayKey()) => (s.dailyDone.includes(today) || s.dailyDone.includes(prevDay(today)) ? s.dailyStreak : 0);
 
 // ---------- carrots 🥕: free in-game currency, earned by playing, spent in the Collection
-export interface Item { id: string; name: string; price: number; legend?: boolean }
+export interface Item { id: string; name: string; price: number; legend?: boolean; /** seasonal: on sale only during this month (1–12) and the next one, back every year */ month?: number }
 /** Hero outfits (accessories + friend costumes). The capydindon costume can't be bought: find the legend. */
 export const OUTFITS: Item[] = [
   { id: 'agrume', name: 'Yuzu', price: 0 }, { id: 'fraise', name: 'Fraise', price: 20 }, { id: 'feuille', name: 'Feuille', price: 30 },
@@ -80,7 +96,18 @@ export const OUTFITS: Item[] = [
   { id: 'automne', name: 'Automne', price: 160 }, { id: 'hiver', name: 'Hiver', price: 170 }, { id: 'couronne', name: 'Couronne royale', price: 250 },
   { id: 'chat', name: 'Costume chat noir', price: 200 }, { id: 'ours', name: 'Costume ourson', price: 200 },
   { id: 'capydindon', name: 'Capydindon légendaire', price: 0, legend: true },
+  // seasonal (rotating shop): one per month, sold during its month and the next
+  { id: 'galette', name: 'Couronne des rois', price: 180, month: 1 }, { id: 'crepe', name: 'Crêpe', price: 180, month: 2 },
+  { id: 'parapluie', name: 'Parapluie', price: 200, month: 3 }, { id: 'cloche', name: 'Cloche en chocolat', price: 200, month: 4 },
+  { id: 'muguet', name: 'Muguet', price: 180, month: 5 }, { id: 'cerises', name: 'Cerises', price: 180, month: 6 },
+  { id: 'glace', name: 'Cornet de glace', price: 200, month: 7 }, { id: 'pasteque', name: 'Pastèque', price: 200, month: 8 },
+  { id: 'pomme', name: 'Pomme de la rentrée', price: 180, month: 9 }, { id: 'citrouille', name: 'Citrouille', price: 220, month: 10 },
+  { id: 'chataigne', name: 'Châtaigne', price: 180, month: 11 }, { id: 'noel', name: 'Bonnet de Noël', price: 220, month: 12 },
 ];
+/** Is a seasonal item for sale on this day? (its month and the following one) */
+export const onSale = (it: Item, today = dayKey()) => { if (!it.month) return true; const m = +today.slice(5, 7); return m === it.month || m === (it.month % 12) + 1; };
+/** Seasonal items for sale right now, newest month first. */
+export const seasonal = (today = dayKey()) => OUTFITS.filter((o) => o.month && onSale(o, today)).sort((a, b) => (+today.slice(5, 7) === a.month ? -1 : 0) - (+today.slice(5, 7) === b.month ? -1 : 0));
 /** Tile sets: which animal plays each family. */
 export const THEMES: Item[] = [
   { id: 'capy', name: 'Capybaras', price: 0 }, { id: 'menagerie', name: 'Ménagerie', price: 120 },
@@ -91,23 +118,41 @@ export const BACKS: Item[] = [
   { id: 'monde', name: 'Selon le monde', price: 0 }, { id: 'nuit', name: 'Nuit étoilée', price: 150 },
   { id: 'sakura', name: 'Sakura', price: 150 }, { id: 'potiron', name: 'Potiron', price: 150 },
 ];
-export type Shelf = 'o' | 't' | 'b';
+/** Tile backs: colour of the tile's back and of its visible edge on the board. */
+export const EDGES: (Item & { side: string; side2: string; back: string })[] = [
+  { id: 'bois', name: 'Bois clair', price: 0, side: '#E2BF8C', side2: '#C99A62', back: '#2FA4A9' },
+  { id: 'jade', name: 'Jade', price: 60, side: '#8FD3B5', side2: '#4FA383', back: '#3F9B78' },
+  { id: 'corail', name: 'Corail', price: 60, side: '#FFB3A1', side2: '#E07A66', back: '#E8735E' },
+  { id: 'lavande', name: 'Lavande', price: 80, side: '#C9B8F0', side2: '#9580D1', back: '#8A72CC' },
+  { id: 'nuit', name: 'Bleu nuit', price: 100, side: '#7F93D6', side2: '#4A5A9C', back: '#34477E' },
+  { id: 'or', name: 'Or', price: 150, side: '#FFD45C', side2: '#D9A21E', back: '#E8B53A' },
+];
+/** Onsen decorations: shown around the hot spring on the home screen (each can be shown or hidden). */
+export const DECOR: Item[] = [
+  { id: 'lanterne', name: 'Lanterne en papier', price: 80 }, { id: 'canards', name: 'Canards de bain', price: 100 },
+  { id: 'yuzus', name: 'Yuzus flottants', price: 100 }, { id: 'seau', name: 'Seau en bois', price: 100 },
+  { id: 'bonsai', name: 'Bonsaï', price: 150 }, { id: 'maneki', name: 'Chat porte-bonheur', price: 200 },
+];
+export type Shelf = 'o' | 't' | 'b' | 'k' | 'd';
+export const SHELF_ITEMS: Record<Shelf, Item[]> = { o: OUTFITS, t: THEMES, b: BACKS, k: EDGES, d: DECOR };
 export interface Wallet { carrots: number; owned: string[] }
-const FREE = ['o:agrume', 't:capy', 'b:monde'];
+const FREE = ['o:agrume', 't:capy', 'b:monde', 'k:bois'];
 export const owns = (w: Wallet, shelf: Shelf, id: string, legends = 0) => FREE.includes(`${shelf}:${id}`) || w.owned.includes(`${shelf}:${id}`) || (shelf === 'o' && id === 'capydindon' && legends > 0);
 /** Spend carrots; returns false (and changes nothing) if not affordable or not for sale. */
-export function buy(w: Wallet, shelf: Shelf, item: Item) {
-  if (owns(w, shelf, item.id) || item.legend || w.carrots < item.price) return false;
+export function buy(w: Wallet, shelf: Shelf, item: Item, today = dayKey()) {
+  if (owns(w, shelf, item.id) || item.legend || w.carrots < item.price || !onSale(item, today)) return false;
   w.carrots -= item.price; w.owned.push(`${shelf}:${item.id}`); return true;
 }
-/** Carrots earned for a win. Replays of levels pay less than the first clear. */
+/** Carrots earned for a win. Replays pay less than the first clear; the golden capydindon bonus is paid once per board
+ *  (first clear of a level, today's daily, any zen/endless board), never on replays or catch-up dailies. */
 export function carrotReward(r: { mode: Mode; late?: boolean; /** day already cleared before */ again?: boolean; stars?: number; first?: boolean; round?: number; diff?: Diff; streak?: number; legend?: boolean; ach?: number }) {
   let c = 0;
   if (r.mode === 'level') c = (r.first ? 10 : 3) + (r.stars ?? 0) * (r.first ? 5 : 2);
-  else if (r.mode === 'daily') c = r.again ? 5 : r.late ? 20 : 40 + Math.min(7, r.streak ?? 1) * 5;
+  else if (r.mode === 'daily') c = r.again ? 5 : r.late ? 15 : 48 + Math.min(7, r.streak ?? 1) * 5; // 48 (was 40): makes up for the rarer daily capydindon (+25 only 1 day in 3)
   else if (r.mode === 'endless') c = 8 + Math.min(12, r.round ?? 0) * 2;
   else c = { facile: 5, moyen: 10, difficile: 15, expert: 25 }[r.diff ?? 'moyen'];
-  return c + (r.legend ? 25 : 0) + (r.ach ?? 0) * 20;
+  const legendPays = r.legend && !r.again && !r.late && (r.mode !== 'level' || r.first);
+  return c + (legendPays ? 25 : 0) + (r.ach ?? 0) * 20;
 }
 
 // ---------- achievements

@@ -1,0 +1,19 @@
+// Onsen decorations (shop shelf 'd'): kawaii sticker SVGs placed around the hot spring on the home screen.
+import { capySvg } from './tiles';
+const S = 'stroke="#fff" stroke-width="5" stroke-linejoin="round" paint-order="stroke"';
+const ART: Record<string, string> = {
+  lanterne: `<svg viewBox="0 0 100 130"><path d="M50 4 V16" stroke="#3B2416" stroke-width="3"/><rect x="34" y="14" width="32" height="8" rx="3" fill="#3B2416" ${S}/>
+    <path d="M28 52 C28 30 72 30 72 52 C72 74 72 74 72 74 C72 96 28 96 28 74 Z" fill="#EF4B5F" ${S}/><path d="M28 52 C40 49 60 49 72 52 M28 64 C40 61 60 61 72 64 M28 76 C40 73 60 73 72 76" stroke="#C8303F" stroke-width="2.4" fill="none"/>
+    <ellipse cx="40" cy="58" rx="4" ry="12" fill="#fff" opacity=".35"/><rect x="34" y="92" width="32" height="8" rx="3" fill="#3B2416" ${S}/><path d="M44 100 V118 M50 100 V122 M56 100 V118" stroke="#F5B82E" stroke-width="3" stroke-linecap="round"/></svg>`,
+  canards: `<svg viewBox="0 0 140 90">${[[38, 52, 1], [96, 58, 0.8]].map(([x, y, k]) => `<g transform="translate(${x} ${y}) scale(${k})"><ellipse cx="0" cy="10" rx="30" ry="18" fill="#FFD93B" ${S}/><circle cx="12" cy="-16" r="16" fill="#FFD93B" ${S}/><path d="M26 -16 L40 -12 L26 -7Z" fill="#FF8A3D" ${S}/><circle cx="16" cy="-20" r="3" fill="#3B2416"/><circle cx="17" cy="-21" r="1" fill="#fff"/><ellipse cx="9" cy="-10" rx="4" ry="2.4" fill="#FF9AA2" opacity=".8"/><path d="M-22 6 C-14 14 -2 14 6 8" stroke="#F2B705" stroke-width="3" fill="none" stroke-linecap="round"/></g>`).join('')}</svg>`,
+  yuzus: `<svg viewBox="0 0 140 70">${[[30, 40, 18], [70, 30, 22], [110, 42, 16]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#F7A21B" ${S}/><ellipse cx="${x - r * 0.35}" cy="${y - r * 0.35}" rx="${r * 0.3}" ry="${r * 0.2}" fill="#FFE2A3"/><path d="M${x} ${y - r} C${x + 3} ${y - r - 8} ${x + 10} ${y - r - 8} ${x + 13} ${y - r - 5} C${x + 9} ${y - r - 1} ${x + 4} ${y - r} ${x} ${y - r}Z" fill="#5FAE57"/>`).join('')}</svg>`,
+  seau: `<svg viewBox="0 0 110 110"><path d="M18 40 L28 98 H82 L92 40 Z" fill="#E2A766" ${S}/><path d="M24 58 H86 M27 80 H83" stroke="#9E6A40" stroke-width="5"/><path d="M40 42 L44 98 M70 42 L66 98" stroke="#C98A4C" stroke-width="2"/>
+    <ellipse cx="55" cy="40" rx="37" ry="9" fill="#BFEFF0" stroke="#fff" stroke-width="4"/><path d="M62 36 L96 6" stroke="#9E6A40" stroke-width="6" stroke-linecap="round"/><ellipse cx="62" cy="36" rx="11" ry="6" fill="#C98A4C" stroke="#fff" stroke-width="3"/>
+    <path d="M10 44 C10 30 34 26 40 34 C36 40 22 46 10 44Z" fill="#fff" stroke="#7CC6E8" stroke-width="3"/></svg>`,
+  bonsai: `<svg viewBox="0 0 120 120"><path d="M30 92 H90 L84 112 H36 Z" fill="#4B7BC4" ${S}/><rect x="26" y="86" width="68" height="9" rx="4" fill="#5B8DEF" ${S}/>
+    <path d="M58 88 C56 74 62 66 54 56 C50 50 58 44 66 40" stroke="#7A4E2E" stroke-width="7" fill="none" stroke-linecap="round"/><path d="M58 70 C66 66 74 66 80 60" stroke="#7A4E2E" stroke-width="5" fill="none" stroke-linecap="round"/>
+    ${[[40, 44, 18], [66, 32, 20], [84, 54, 15], [52, 26, 13]].map(([x, y, r]) => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${r * 0.7}" fill="#3FAE6A" ${S}/><ellipse cx="${x - r * 0.3}" cy="${y - r * 0.2}" rx="${r * 0.4}" ry="${r * 0.25}" fill="#7FD08F"/>`).join('')}</svg>`,
+  maneki: `<svg viewBox="-6 -4 112 126">${capySvg('', '', 'chat').replace(/^<svg[^>]*>|<\/svg>$/g, '')}<g transform="translate(70 40) rotate(-10)"><ellipse cx="0" cy="0" rx="9" ry="13" fill="#2B2B3A" stroke="#fff" stroke-width="4" paint-order="stroke"/><ellipse cx="0" cy="-4" rx="4" ry="3" fill="#FF9AA2"/></g><circle cx="50" cy="96" r="10" fill="#F5B82E" stroke="#fff" stroke-width="4" paint-order="stroke"/><text x="50" y="100.5" text-anchor="middle" font-family="Fredoka, sans-serif" font-weight="700" font-size="11" fill="#fff">福</text></svg>`,
+};
+/** Sticker art of a decoration (inline SVG string; static, no user data). */
+export const decorSvg = (id: string) => ART[id] ?? '';

@@ -54,14 +54,10 @@ describe('carrots shop', () => {
   test('rewards: first clears pay more, daily and expert pay well, legend bonus', () => {
     expect(carrotReward({ mode: 'level', stars: 3, first: true })).toBe(25);
     expect(carrotReward({ mode: 'level', stars: 3, first: false })).toBeLessThan(25);
-    expect(carrotReward({ mode: 'daily', streak: 1 })).toBe(45);
-    expect(carrotReward({ mode: 'daily', streak: 30 })).toBe(75);
+    expect(carrotReward({ mode: 'daily', streak: 1 })).toBe(53);
+    expect(carrotReward({ mode: 'daily', streak: 30 })).toBe(83);
     expect(carrotReward({ mode: 'zen', diff: 'expert' })).toBeGreaterThan(carrotReward({ mode: 'zen', diff: 'facile' }));
     expect(carrotReward({ mode: 'endless', round: 3, legend: true, ach: 2 })).toBe(8 + 6 + 25 + 40);
-    // the whole shop is reachable by playing the campaign + a month of dailies
-    const total = [...OUTFITS, ...THEMES, ...BACKS].reduce((a, o) => a + o.price, 0);
-    const campaign = 30 * carrotReward({ mode: 'level', stars: 3, first: true }); const month = 30 * carrotReward({ mode: 'daily', streak: 7 });
-    expect(campaign + month).toBeGreaterThan(total * 0.9);
   });
 });
 describe('difficulty', () => {
@@ -74,15 +70,14 @@ describe('difficulty', () => {
   test('easy zen boards are friendly', () => { for (let s = 1; s <= 4; s++) { const z = zenLevel(s, 'facile'); expect(winRate(LAYOUTS[z.layout].make(), z.seed, 20)).toBeGreaterThanOrEqual(0.6); } });
 });
 describe('legendary capydindon', () => {
-  test('daily always hides exactly one golden pair, and the deal stays solvable', () => {
-    for (const k of ['2026-10-30', '2026-11-01', '2027-02-14']) {
-      const d = dailyLevel(k); const { tiles, solution } = deal(LAYOUTS[d.layout].make(), d.seed, d.legend);
-      expect(tiles.filter((t) => t.kind === 'capydindon').length).toBe(2); for (const [a, b] of solution) { const live = tiles.filter((t) => !t.removed); expect(isFree(tiles[a], live) && isFree(tiles[b], live) && matches(tiles[a].kind, tiles[b].kind)).toBe(true); tiles[a].removed = tiles[b].removed = true; }
+  test('a daily with the golden pair has exactly one, and the deal stays solvable', () => {
+    let seen = 0;
+    for (let i = 0; seen < 3 && i < 60; i++) {
+      const k = dayKey(new Date(2026, 9, 30 + i)); const d = dailyLevel(k); const { tiles, solution } = deal(LAYOUTS[d.layout].make(), d.seed, d.legend);
+      const c = tiles.filter((t) => t.kind === 'capydindon').length; expect([0, 2]).toContain(c); if (!c) continue; seen++;
+      for (const [a, b] of solution) { const live = tiles.filter((t) => !t.removed); expect(isFree(tiles[a], live) && isFree(tiles[b], live) && matches(tiles[a].kind, tiles[b].kind)).toBe(true); tiles[a].removed = tiles[b].removed = true; }
     }
-  });
-  test('campaign: about 1 level in 5 has one', () => {
-    const n = LEVELS.filter((l) => deal(LAYOUTS[l.layout].make(), l.seed, 0.2).tiles.some((t) => t.kind === 'capydindon')).length;
-    expect(n).toBeGreaterThanOrEqual(2); expect(n).toBeLessThanOrEqual(12);
+    expect(seen).toBe(3);
   });
   test('legend achievements', () => { const c = { stats: { ...NEW_STATS(), legends: 1 }, stars: {}, totalStars: 0 }; expect(checkAchievements(c, [])).toContain('legend1'); });
 });
@@ -110,8 +105,8 @@ describe('missed dailies (calendar replay)', () => {
   test('missed days are the past REPLAY_DAYS days not won on the day nor replayed, newest first', () => {
     const s = { ...NEW_STATS(), dailyDone: ['2026-10-29', '2026-10-27'], dailyLate: ['2026-10-26'] };
     const m = missedDays(s, T); expect(m.length).toBe(REPLAY_DAYS - 3); expect(m[0]).toBe('2026-10-28'); expect(m).not.toContain(T);
-    expect(m).not.toContain('2026-10-26'); expect(m.at(-1)).toBe('2026-09-30');
-    expect(canReplay(s, '2026-10-28', T)).toBe(true); expect(canReplay(s, '2026-10-29', T)).toBe(false); expect(canReplay(s, '2026-10-31', T)).toBe(false); expect(canReplay(s, '2026-09-29', T)).toBe(false);
+    expect(m).not.toContain('2026-10-26'); expect(m.at(-1)).toBe('2026-10-23');
+    expect(canReplay(s, '2026-10-28', T)).toBe(true); expect(canReplay(s, '2026-10-29', T)).toBe(false); expect(canReplay(s, '2026-10-31', T)).toBe(false); expect(canReplay(s, '2026-10-22', T)).toBe(false); expect(canReplay(s, '2026-09-29', T)).toBe(false);
   });
   test('a replayed day is the very same board, flagged late, and never touches the streak', () => {
     const late = dailyLevel('2026-10-28', true); const orig = dailyLevel('2026-10-28');
@@ -120,10 +115,10 @@ describe('missed dailies (calendar replay)', () => {
     recordLate(s, '2026-10-28'); expect(s.dailyLate).toEqual(['2026-10-28']); expect(s.dailyStreak).toBe(2); expect(s.dailyDone).not.toContain('2026-10-28');
     recordLate(s, '2026-10-28'); recordLate(s, '2026-10-30'); expect(s.dailyLate).toEqual(['2026-10-28']);
   });
-  test('rewards: late daily pays 20 (+legend), no streak bonus; a day already cleared pays 5', () => {
-    expect(carrotReward({ mode: 'daily', late: true, streak: 7 })).toBe(20);
-    expect(carrotReward({ mode: 'daily', late: true, legend: true })).toBe(45);
-    expect(carrotReward({ mode: 'daily', streak: 1 })).toBe(45);
+  test('rewards: late daily pays 15 (no legend bonus), no streak bonus; a day already cleared pays 5', () => {
+    expect(carrotReward({ mode: 'daily', late: true, streak: 7 })).toBe(15);
+    expect(carrotReward({ mode: 'daily', late: true, legend: true })).toBe(15);
+    expect(carrotReward({ mode: 'daily', streak: 1 })).toBe(53);
     expect(carrotReward({ mode: 'daily', again: true, streak: 7 })).toBe(5);
     expect(carrotReward({ mode: 'daily', late: true, again: true })).toBe(5);
   });

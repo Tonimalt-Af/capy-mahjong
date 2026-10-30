@@ -1,5 +1,5 @@
-import { NEW_STATS, ACHIEVEMENTS, OUTFITS, THEMES, BACKS, DIFFS, type Stats, type Diff, type PlayLevel, type Mode } from './meta';
-import { LAYOUTS } from './levels';
+import { NEW_STATS, ACHIEVEMENTS, SHELF_ITEMS, DECOR, hash, DIFFS, type Stats, type Diff, type PlayLevel, type Mode } from './meta';
+import { LAYOUTS, LEVELS } from './levels';
 import { KIND_BY_ID, type Theme } from './tiles';
 import { isDay } from './dates';
 
@@ -9,10 +9,10 @@ export interface Run { level: PlayLevel; kinds: string[]; removed: number[]; his
 export const KEY = 'capy-mahjong-v1';
 export const BACKUP_KEY = 'capy-mahjong-v1.bak';
 export const CORRUPT_KEY = 'capy-mahjong-v1.corrupt';
-export interface Save { stars: Record<number, number>; best: Record<string, number>; settings: { sfx: boolean; music: boolean; musicVol: number; sfxVol: number; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean; v?: number }; seenHowTo: boolean; seenUndo?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; diff: Diff; run: Run | null; firstDay?: string }
+export interface Save { stars: Record<number, number>; best: Record<string, number>; settings: { sfx: boolean; music: boolean; musicVol: number; sfxVol: number; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean; v?: number }; seenHowTo: boolean; seenUndo?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; /** tile back */ edge: string; /** onsen decorations shown on the home screen */ decor: string[]; diff: Diff; run: Run | null; firstDay?: string }
 /** Settings schema version. v2: pair highlight ("Montrer les paires possibles") is off by default; older saves are switched off once. */
 export const SETTINGS_V = 2;
-const DEF: Save = { stars: {}, best: {}, settings: { sfx: true, music: true, musicVol: 0.45, sfxVol: 0.6, dim: true, vibrate: true, hl: false, autohint: false, v: SETTINGS_V }, seenHowTo: false, stats: NEW_STATS(), ach: [], outfit: 'agrume', carrots: 0, owned: [], theme: 'capy', bg: 'monde', diff: 'moyen', run: null };
+const DEF: Save = { stars: {}, best: {}, settings: { sfx: true, music: true, musicVol: 0.45, sfxVol: 0.6, dim: true, vibrate: true, hl: false, autohint: false, v: SETTINGS_V }, seenHowTo: false, stats: NEW_STATS(), ach: [], outfit: 'agrume', carrots: 0, owned: [], theme: 'capy', bg: 'monde', edge: 'bois', decor: [], diff: 'moyen', run: null };
 export const defaults = (): Save => structuredClone(DEF);
 
 // ---------- field validators (anything unexpected falls back to the default for that field only)
@@ -42,6 +42,7 @@ function level(x: unknown): PlayLevel | null {
   if (!isObj(x) || !has(LAYOUTS, x.layout) || !MODES.includes(x.mode as Mode)) return null;
   const mode = x.mode as Mode; const l: PlayLevel = { mode, layout: x.layout, n: int(x.n, -1, -1, 29), world: int(x.world, 0, 0, 4), index: int(x.index, 0, 0, 99), seed: int(x.seed, 1, 0, 2 ** 32 - 1), par: int(x.par, 300, 30, 9999), hints: int(x.hints, 1, 0, 99), shuffles: int(x.shuffles, 1, 0, 99), undos: int(x.undos, -1, -1, 99), legend: typeof x.legend === 'number' && x.legend >= 0 && x.legend <= 1 ? x.legend : 0, title: typeof x.title === 'string' ? x.title.slice(0, 60) : '' };
   if (mode === 'level' && l.n < 0) return null;
+  if (mode === 'level') l.name = LEVELS[l.n].name; // never taken from the save: names are ours
   if (mode === 'daily') { if (!isDay(x.date)) return null; l.date = x.date; if (x.late === true) l.late = true; }
   if (mode === 'endless') l.round = int(x.round, 0, 0, 999);
   if (mode === 'zen' || x.diff !== undefined) { const d = DIFFS.find((f) => f.id === x.diff); if (d) l.diff = d.id; else if (mode === 'zen') l.diff = 'moyen'; }
@@ -59,7 +60,7 @@ function run(x: unknown): Run | null {
   const history = Array.isArray(x.history) ? x.history.filter((p): p is [number, number] => Array.isArray(p) && p.length === 2 && p.every((v) => removed.includes(v as number))) : [];
   return { level: lv, kinds, removed, history, t: int(x.t, 0, 0, 359999), hints: int(x.hints, 0, 0, 99), shuffles: int(x.shuffles, 0, 0, 99), undos: int(x.undos, 0, 0, 999), undoBonus: int(x.undoBonus, 0, 0, 999), score: int(x.score, 0, 0, 1e7), legends: int(x.legends, 0, 0, 1), maxCombo: int(x.maxCombo, 0, 0, 999) };
 }
-const SHELVES = { o: OUTFITS, t: THEMES, b: BACKS } as const;
+const SHELVES = SHELF_ITEMS;
 /** Type-check every field of a parsed save; never throws. */
 export function sanitize(x: unknown): Save {
   const i = isObj(x) ? x : {}; const s = defaults();
@@ -71,8 +72,9 @@ export function sanitize(x: unknown): Save {
   s.owned = Array.isArray(i.owned) ? [...new Set(i.owned.filter((o): o is string => { if (typeof o !== 'string') return false; const [sh, id] = o.split(':'); return has(SHELVES, sh) && SHELVES[sh as keyof typeof SHELVES].some((it) => it.id === id && !it.legend); }))] : [];
   if (s.stats.legends > 0 && !s.owned.includes('o:capydindon')) s.owned.push('o:capydindon');
   s.carrots = int(i.carrots, 0, 0, 1e7);
-  const owned = (sh: 'o' | 't' | 'b', id: unknown) => typeof id === 'string' && SHELVES[sh].some((it) => it.id === id && (it.price === 0 && !it.legend || s.owned.includes(`${sh}:${id}`)));
-  s.outfit = owned('o', i.outfit) ? i.outfit as string : 'agrume'; s.theme = owned('t', i.theme) ? i.theme as Theme : 'capy'; s.bg = owned('b', i.bg) ? i.bg as string : 'monde';
+  const owned = (sh: keyof typeof SHELVES, id: unknown) => typeof id === 'string' && SHELVES[sh].some((it) => it.id === id && (it.price === 0 && !it.legend || s.owned.includes(`${sh}:${id}`)));
+  s.outfit = owned('o', i.outfit) ? i.outfit as string : 'agrume'; s.theme = owned('t', i.theme) ? i.theme as Theme : 'capy'; s.bg = owned('b', i.bg) ? i.bg as string : 'monde'; s.edge = owned('k', i.edge) ? i.edge as string : 'bois';
+  s.decor = Array.isArray(i.decor) ? [...new Set(i.decor.filter((d): d is string => typeof d === 'string' && DECOR.some((x) => x.id === d) && s.owned.includes(`d:${d}`)))] : [];
   s.diff = DIFFS.some((d) => d.id === i.diff) ? i.diff as Diff : 'moyen';
   s.run = run(i.run);
   if (isDay(i.firstDay)) s.firstDay = i.firstDay;
@@ -104,5 +106,22 @@ export const save = (s: Save): boolean => {
   try { const j = JSON.stringify(s); st.setItem(KEY, j); if (Date.now() - lastBak > 60_000) { lastBak = Date.now(); try { st.setItem(BACKUP_KEY, j); } catch { /* quota */ } } return true; } catch { return false; }
 };
 export const reset = (): Save => { const st = ls(); try { st?.removeItem(KEY); st?.removeItem(BACKUP_KEY); } catch { /* blocked */ } return defaults(); };
+// ---------- save code: the whole save as a copy-paste text (Safari may erase site data after 7 days without a visit)
+const CODE_PREFIX = 'CAPY1-';
+const b64 = (txt: string) => { const bytes = new TextEncoder().encode(txt); let bin = ''; bytes.forEach((b) => { bin += String.fromCharCode(b); }); return btoa(bin); };
+const unb64 = (b: string) => new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(b), (ch) => ch.charCodeAt(0)));
+/** Export: 'CAPY1-' + base64(JSON) + '-' + checksum (detects a truncated or mistyped paste). The in-progress board is left out. */
+export function exportCode(s: Save): string { const body = b64(JSON.stringify({ ...s, run: null })); return `${CODE_PREFIX}${body}-${hash(body).toString(36)}`; }
+/** Import a save code. Returns the validated save, or a French reason why the code was refused. Never throws. */
+export function importCode(text: string): { save: Save } | { error: string } {
+  const t = (text ?? '').replace(/\s+/g, '');
+  if (!t) return { error: 'Colle d\'abord ton code de sauvegarde.' };
+  if (!t.startsWith(CODE_PREFIX)) return { error: 'Ce n\'est pas un code de sauvegarde Mahjong Capybaras.' };
+  const m = /^CAPY1-([A-Za-z0-9+/=]{8,400000})-([0-9a-z]{1,8})$/.exec(t); if (!m) return { error: 'Code incomplet : copie-le en entier.' };
+  if (hash(m[1]).toString(36) !== m[2]) return { error: 'Code abîmé : une partie manque ou a été modifiée.' };
+  let data: unknown; try { data = JSON.parse(unb64(m[1])); } catch { return { error: 'Code illisible.' }; }
+  if (!isObj(data) || !isObj(data.stats) || !isObj(data.settings)) return { error: 'Code illisible.' };
+  return { save: sanitize(data) };
+}
 export const unlocked = (s: Save, n: number) => n === 0 || (s.stars[n - 1] ?? 0) > 0;
 export const totalStars = (s: Save) => Object.values(s.stars).reduce((a, b) => a + b, 0);

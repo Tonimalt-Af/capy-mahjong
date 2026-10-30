@@ -15,12 +15,12 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => { const p = page as unknown as { errs: string[]; csp: string[] }; expect(p.errs).toEqual([]); expect(p.csp).toEqual([]); });
 
 test('shuffle soft-lock (level 8 repro): stuck stacked tiles get a clear card with a way out; no shuffle is spent', async ({ page }) => {
-  await put(page, { ...BASE, stars: { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 } }); await page.goto('/?level=7');
+  await put(page, { ...BASE, stars: { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 } }); await page.goto('./?level=7');
   await expect(page.locator('.tile')).toHaveCount(64);
   await page.evaluate((ps) => (window as unknown as W).__game.tapPairs(ps), L8);
   expect((await page.evaluate(() => (window as unknown as W).__game.state()))!.left).toBe(4);
   const card = page.locator('.card.lose'); await expect(card).toBeVisible();
-  await expect(card).toContainText(/Tuiles coincées|Perdu/);
+  await expect(card).toContainText(/Tuiles coincées|Plus de coups/);
   await expect(page.locator('#n-retry')).toBeVisible(); await expect(page.locator('#n-map')).toBeVisible();
   const c = await page.evaluate(() => (window as unknown as W).__game.counters()); expect(c).toMatchObject({ shuffles: 0, history: 30, paused: true }); // clock stopped
   await expect(page.locator('#g-shuf-n')).toHaveText('3');
@@ -34,31 +34,31 @@ test('shuffle soft-lock (level 8 repro): stuck stacked tiles get a clear card wi
 test('malformed deep links never crash: home (or map) with a notice', async ({ page }) => {
   await put(page, { ...BASE, stars: {} });
   for (const q of ['?level=abc', '?level=-1', '?mode=zen&seed=abc', '?mode=zen&layout=constructor', '?mode=zen&layout=__proto__', '?mode=zen&diff=lol']) {
-    await page.goto('/' + q); await expect(page.locator('#v-home')).toBeVisible(); await expect(page.locator('#toast')).toContainText('Lien invalide');
+    await page.goto('./' + q); await expect(page.locator('#v-home')).toBeVisible(); await expect(page.locator('#toast')).toContainText('Lien invalide');
   }
-  await page.goto('/?mode=endless&round=40'); expect((await page.evaluate(() => (window as unknown as W).__game.state()))!.layout).toBe('galet'); // always round 1
-  await page.goto('/?level=12'); await expect(page.locator('#v-map')).toBeVisible(); await expect(page.locator('#toast')).toContainText('pas encore débloqué');
+  await page.goto('./?mode=endless&round=40'); expect((await page.evaluate(() => (window as unknown as W).__game.state()))!.layout).toBe('galet'); // always round 1
+  await page.goto('./?level=12'); await expect(page.locator('#v-map')).toBeVisible(); await expect(page.locator('#toast')).toContainText('pas encore débloqué');
   expect(new URL(page.url()).search).toBe(''); // link consumed: a reload goes home
 });
 test('corrupted saves: wrong types are repaired per field, nothing is blank', async ({ page }) => {
   await put(page, { stars: null, theme: 'nope', bg: '"><img src=x onerror=window.__x=1>', carrots: '<img src=x onerror=window.__x=1>', outfit: '<svg onload=window.__x=1>', settings: 7, stats: { won: 'x' }, run: { level: { layout: '__proto__' } } });
-  await page.goto('/'); await expect(page.locator('.logo')).toBeVisible(); await expect(page.locator('#h-wallet b')).toHaveText('0');
+  await page.goto('./'); await expect(page.locator('.logo')).toBeVisible(); await expect(page.locator('#h-wallet b')).toHaveText('0');
   expect(await page.locator('#tiledefs symbol').count()).toBeGreaterThan(30);
   await tap(page, '#h-coll'); await expect(page.locator('#v-coll')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __x?: number }).__x)).toBeUndefined();
 });
 test('unreadable save: the backup copy is restored and the broken text kept aside', async ({ page }) => {
   await put(page, '{"carrots": 12, "stars": {', { 'capy-mahjong-v1.bak': JSON.stringify({ ...BASE, carrots: 321, stars: { 0: 3 } }) });
-  await page.goto('/'); await expect(page.locator('#h-wallet b')).toHaveText('321'); await expect(page.locator('#toast')).toContainText('copie de secours');
+  await page.goto('./'); await expect(page.locator('#h-wallet b')).toHaveText('321'); await expect(page.locator('#toast')).toContainText('copie de secours');
   expect(await page.evaluate(() => localStorage.getItem('capy-mahjong-v1.corrupt'))).toBe('{"carrots": 12, "stars": {');
 });
 test('XSS: a tampered run title / save strings are shown as text, never executed', async ({ page }) => {
   await put(page, { ...BASE, stars: {}, run: { level: { mode: 'zen', layout: 'galet', n: -1, world: 0, index: 0, seed: 5, par: 100, hints: 99, shuffles: 99, undos: -1, legend: 0, diff: 'facile', title: '<img src=x onerror=window.__x=1>' }, kinds: [], removed: [], history: [], t: 0, hints: 0, shuffles: 0, undos: 0, score: 0, legends: 0, maxCombo: 0 } });
-  await page.goto('/'); await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('capy-mahjong-v1')!); return s; });
+  await page.goto('./'); await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('capy-mahjong-v1')!); return s; });
   expect(await page.evaluate(() => (window as unknown as { __x?: number }).__x)).toBeUndefined();
 });
 test('CSP: meta policy present; fonts, home art, audio, service worker and a full game work without violations', async ({ page }) => {
-  await put(page, { ...BASE, stars: {} }); await page.goto('/');
+  await put(page, { ...BASE, stars: {} }); await page.goto('./');
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   expect(csp).toContain("script-src 'self'"); expect(csp).not.toContain('unsafe-eval'); expect(csp).toContain("object-src 'none'");
   await expect(page.locator('body')).toHaveClass(/home-art/, { timeout: 8000 });
@@ -73,7 +73,7 @@ test('boot failure shows a recovery screen (copy save / start over), never a bla
   await put(page, { ...BASE, carrots: 9 });
   await page.addInitScript(() => { if (sessionStorage.boom) return; sessionStorage.boom = '1'; const o = Element.prototype.insertAdjacentHTML; Element.prototype.insertAdjacentHTML = function (...a) { Element.prototype.insertAdjacentHTML = o; throw new Error('boom'); }; });
   page.removeAllListeners('pageerror');
-  await page.goto('/'); await expect(page.locator('.rescue')).toBeVisible(); await expect(page.locator('.rescue')).toContainText('Copier ma sauvegarde');
+  await page.goto('./'); await expect(page.locator('.rescue')).toBeVisible(); await expect(page.locator('.rescue')).toContainText('Copier ma sauvegarde');
   await tap(page, '.rescue .danger'); await tap(page, '.rescue .danger'); // confirm
   await expect(page.locator('.logo')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('capy-mahjong-v1.corrupt'))).toContain('"carrots":9');

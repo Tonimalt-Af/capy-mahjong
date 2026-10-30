@@ -24,18 +24,30 @@ describe('shuffle soft-lock (audit P0-1)', () => {
     expect(clearable([{ x: 0, y: 0, z: 0 }, { x: 6, y: 0, z: 0 }])).toBe(true);
     expect(clearable([{ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, { x: 4, y: 0, z: 0 }])).toBe(false); // odd
   });
-  it('random mid-game positions: reshuffle never throws; "solvable" really is, and "pair" always leaves a move', () => {
-    let solvable = 0;
+  it('random mid-game positions: reshuffle never throws, keeps the faces, and a non-dead shuffle always leaves a move', () => {
+    let moved = 0;
     for (let k = 0; k < 120; k++) {
       const lv = LEVELS[k % LEVELS.length]; const { tiles } = deal(LAYOUTS[lv.layout].make(), lv.seed + k); const r = rng(k + 1);
       const steps = Math.floor(r() * tiles.length / 2); // random legal play
-      for (let i = 0; i < steps; i++) { const h = findHint(tiles); if (!h) break; h[0].removed = h[1].removed = true; if (r() < 0.5) continue; }
+      for (let i = 0; i < steps; i++) { const h = findHint(tiles); if (!h) break; h[0].removed = h[1].removed = true; }
       if (!tiles.some((t) => !t.removed)) continue;
+      const before = tiles.filter((t) => !t.removed).map((t) => t.kind).sort().join();
       const res = reshuffle(tiles, k);
-      if (res === 'solvable') { solvable++; const live = tiles.filter((t) => !t.removed); if (live.length <= 40) expect(solve(tiles.map((t) => ({ ...t })) as Tile[], 400_000)).not.toBeNull(); }
-      if (res !== 'dead') expect(findHint(tiles)).not.toBeNull();
+      expect(tiles.filter((t) => !t.removed).map((t) => t.kind).sort().join()).toBe(before);
+      if (res !== 'dead') { moved++; expect(findHint(tiles)).not.toBeNull(); }
     }
-    expect(solvable).toBeGreaterThan(80);
+    expect(moved).toBeGreaterThan(80);
+  });
+  it('by design a shuffle is random: it does not guarantee the board can still be cleared (mistakes can lose the game)', () => {
+    let unsolvable = 0;
+    for (let k = 0; k < 200 && !unsolvable; k++) {
+      const { tiles, solution } = deal(LAYOUTS.tortue.make(), 500 + k);
+      for (const [a, b] of solution.slice(0, solution.length - 10)) tiles[a].removed = tiles[b].removed = true; // 20 tiles left
+      if (reshuffle(tiles, k) === 'dead') continue;
+      const rest = tiles.filter((t) => !t.removed).map((t, i) => ({ ...t, id: i, removed: false })) as Tile[];
+      if (solve(rest, 400_000) === null) unsolvable++;
+    }
+    expect(unsolvable).toBeGreaterThan(0);
   });
 });
 

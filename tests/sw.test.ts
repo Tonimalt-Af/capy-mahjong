@@ -31,3 +31,26 @@ it('fetches outside the app scope are not intercepted', () => {
   r.h.fetch({ request: { method: 'GET', url: 'https://x.github.io/capy-mahjong/assets/a.js' }, respondWith: (p: Promise<unknown>) => { responded = true; p.catch(() => {}); } });
   expect(responded).toBe(true);
 });
+function harness(fetchImpl: () => Promise<unknown>, cached: Record<string, unknown>) {
+  const code = buildSw(); const h: Record<string, (e: unknown) => void> = {}; let skipped = 0; const put: string[] = [];
+  const self = { addEventListener: (n: string, f: (e: unknown) => void) => { h[n] = f; }, skipWaiting: () => { skipped++; return Promise.resolve(); }, clients: { claim: () => Promise.resolve() }, registration: { scope: 'https://x.github.io/capy-mahjong/' } };
+  const caches = { keys: async () => [], delete: async () => true, open: async () => ({ addAll: async () => {}, match: async (k: unknown) => cached[typeof k === 'string' ? k : (k as { url: string }).url], put: async (k: string) => { put.push(k); } }) };
+  new Function('self', 'caches', 'fetch', code)(self, caches, fetchImpl);
+  const nav = (url: string) => new Promise((ok) => h.fetch({ request: { method: 'GET', mode: 'navigate', url }, respondWith: (p: Promise<unknown>) => ok(p) })).then((p) => p);
+  return { h, nav, put, skipped: () => skipped, code };
+}
+it('pages are network-first: a fresh index.html is served and cached when online', async () => {
+  const fresh = { ok: true, v: 'new', clone() { return this; } };
+  const r = harness(async () => fresh, { './': { v: 'old' } });
+  expect(await r.nav('https://x.github.io/capy-mahjong/')).toBe(fresh); expect(r.put).toEqual(['./']);
+});
+it('pages fall back to the cached copy offline', async () => {
+  const r = harness(async () => { throw new TypeError('offline'); }, { './': { v: 'old' } });
+  expect(await r.nav('https://x.github.io/capy-mahjong/?mode=zen')).toEqual({ v: 'old' });
+});
+it('a new version waits for the page ("Recharger") instead of taking over by itself', () => {
+  const r = harness(async () => ({}), {});
+  r.h.install({ waitUntil: () => {} }); expect(r.skipped()).toBe(0);
+  r.h.message({ data: 'nope' }); expect(r.skipped()).toBe(0);
+  r.h.message({ data: 'skip' }); expect(r.skipped()).toBe(1);
+});

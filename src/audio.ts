@@ -40,7 +40,9 @@ export class Sound {
   private epBus!: GainNode; private bassBus!: GainNode; private echo!: GainNode; private noise!: AudioBuffer; // noise is only used by short SFX (select, buy, shuffle), never by the music
   private timer = 0; private world = -1; private next = 0; private step = 0; private r = rng(1); private lastMel = 0;
   ensure() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') void this.ctx.resume(); return this.ctx; }
+    // iOS: the context can be 'suspended' (no gesture yet / page hidden) or 'interrupted' (call, Siri, other app took audio):
+    // every user gesture calls ensure(), which resumes it.
+    if (this.ctx) { if (this.ctx.state !== 'running' && this.ctx.state !== 'closed' && !document.hidden) this.ctx.resume().catch(() => {}); return this.ctx; }
     const C = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!C) return null;
     const ctx = (this.ctx = new C());
@@ -49,7 +51,9 @@ export class Sound {
     const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 2; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.25;
     const trim = ctx.createGain(); trim.gain.value = TRIM;
     this.mix = ctx.createGain(); this.mix.connect(trim).connect(lim).connect(ctx.destination);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) void ctx.suspend(); else void ctx.resume(); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) ctx.suspend().catch(() => {}); else ctx.resume().catch(() => {}); });
+    // iOS unlock: a silent one-sample buffer started inside the gesture fully opens the audio session
+    try { const b = ctx.createBufferSource(); b.buffer = ctx.createBuffer(1, 1, 22050); b.connect(ctx.destination); b.start(0); } catch { /* ignore */ }
     // SFX: soften transients (low-pass), user volume
     this.sfxVolG = ctx.createGain(); this.sfxVolG.connect(this.mix);
     const sLp = ctx.createBiquadFilter(); sLp.type = 'lowpass'; sLp.frequency.value = 6500; sLp.Q.value = 0.5; sLp.connect(this.sfxVolG);

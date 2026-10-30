@@ -116,11 +116,10 @@ export function clearable(live: Pos[], r: () => number = rng(1), limit = 200_000
   try { return rec(n); } catch { return null; }
 }
 
-export type ShuffleResult = 'solvable' | 'pair' | 'dead';
+export type ShuffleResult = 'pair' | 'dead';
 /**
  * Reshuffle the remaining faces (positions kept). Never throws and only mutates on success:
- *  - 'solvable': the new faces admit a full clear;
- *  - 'pair': a full clear couldn't be found within limits, but at least one free matching pair is guaranteed;
+ *  - 'pair': random new faces, with at least one free matching pair (a full clear is NOT guaranteed, by design);
  *  - 'dead': mathematically impossible to clear the remaining positions (whatever the faces) → caller shows the end screen.
  */
 export function reshuffle(tiles: Tile[], seed: number): ShuffleResult {
@@ -131,11 +130,11 @@ export function reshuffle(tiles: Tile[], seed: number): ShuffleResult {
   for (const ks of byGroup.values()) for (let i = 0; i + 1 < ks.length; i += 2) pairs.push([ks[i], ks[i + 1]]);
   if (pairs.length * 2 !== live.length) return 'dead'; // inconsistent faces: should never happen
   const r = rng(seed);
-  try { const { kind } = assignSolvable(live, pairs, r, Math.max(20, Math.ceil(3000 / live.length))); for (const t of live) t.kind = kind.get(t)!; return 'solvable'; } catch { /* greedy search failed */ }
-  const c = clearable(live, r);
-  if (c === false) return 'dead';
+  // Design: a shuffle is a plain random re-deal of the remaining faces (with one free matching pair forced so there is a move).
+  // It does NOT search for a solvable arrangement: getting stuck after mistakes is part of the game. It only reports 'dead'
+  // (and changes nothing) when no arrangement could ever clear the stacks, so the caller doesn't spend the shuffle.
+  if (clearable(live, r) === false) return 'dead';
   const free = freeTiles(live); if (free.length < 2) return 'dead';
-  // fallback: random faces, but force one free matching pair so the player always has a move
   const flat = shuffleArr(pairs.slice(), r); const [a, b] = shuffleArr(free.slice(), r);
   const rest = live.filter((t) => t !== a && t !== b); const kinds = shuffleArr(flat.slice(1).flat(), r);
   a.kind = flat[0][0]; b.kind = flat[0][1]; rest.forEach((t, i) => { t.kind = kinds[i]; });

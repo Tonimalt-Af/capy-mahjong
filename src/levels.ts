@@ -50,6 +50,21 @@ export const LAYOUTS: Record<string, LayoutDef> = {
     [1, 1, 1, ['...#####...', '.#########.', '.#########.', '....###....']],
     [2, 2, 2, ['..####..', '.######.']],
   ) },
+  carotte: { id: 'carotte', name: 'Carotte', shape: true, make: () => grid( // lying carrot: leafy top on the left, pointy tip on the right
+    [0, 0, 0, ['##..........', '.#.#######..', '..##########', '.#.#######..', '##..........']],
+    [1, 7, 1, ['######', '######']],
+    [2, 9, 2, ['####']],
+  ) },
+  yuzu: { id: 'yuzu', name: 'Yuzu', shape: true, make: () => grid( // round fruit with a little leaf
+    [0, 0, 0, ['....##....', '..######..', '.########.', '##########', '##########', '.########.', '..######..']],
+    [1, 3, 3, ['.####.', '######', '.####.']],
+    [2, 7, 5, ['##']],
+  ) },
+  nuage: { id: 'nuage', name: 'Nuage', shape: true, make: () => grid( // puffy cloud (onsen steam, mountain snow)
+    [0, 0, 0, ['...###..###...', '..##########..', '##############', '##############', '.############.']],
+    [1, 3, 1, ['.###..###.', '##########', '.########.']],
+    [2, 7, 3, ['###', '###']],
+  ) },
 };
 
 export interface World { id: string; name: string; music: number; bg: [string, string]; accent: string; mascot: string }
@@ -61,21 +76,35 @@ export const WORLDS: World[] = [
   { id: 'temple', name: 'Temple', music: 4, bg: ['#FFF1CF', '#E8B864'], accent: '#B9822A', mascot: 'chat' },
 ];
 
-export interface Level { n: number; world: number; index: number; layout: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number }
+export interface Level { n: number; world: number; index: number; layout: string; /** unique campaign level name */ name?: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number }
+// Audit 2026-10-30 (steering): no more "Galet, Pont, Galet, Pont…": every world mixes several boards, no board twice in a row,
+// 17 boards over 30 levels (3 new simple shapes: carotte, yuzu, nuage). L8 keeps its board+seed (soft-lock repro test).
 const PLAN: string[][] = [
-  ['galet', 'galet', 'pont', 'galet', 'pont', 'coeur'],
-  ['pont', 'pyramide', 'coeur', 'pyramide', 'fleur', 'ours'],
-  ['pyramide', 'fleur', 'chat', 'papillon', 'champignon', 'forteresse'],
-  ['papillon', 'etoile', 'forteresse', 'capy', 'montagne', 'montagne'],
-  ['capy', 'montagne', 'tortue', 'forteresse', 'capy', 'tortue'],
+  ['galet', 'carotte', 'pont', 'yuzu', 'papillon', 'coeur'],
+  ['fleur', 'pyramide', 'etoile', 'nuage', 'ours', 'chat'],
+  ['champignon', 'yuzu', 'forteresse', 'coeur', 'papillon', 'capy'],
+  ['etoile', 'montagne', 'ours', 'nuage', 'capy', 'tortue'],
+  ['forteresse', 'chat', 'montagne', 'champignon', 'capy', 'tortue'],
+];
+/** Every level's own name, themed by world (shown on the map, in game, on the win card and in the share text). */
+export const LEVEL_NAMES: string[][] = [
+  ['Premier plouf', 'La carotte du goûter', 'Le pont de bambou', 'Yuzu au fil de l\'eau', 'Le papillon des roseaux', 'Cœur de nénuphar'],
+  ['Fleur de vapeur', 'La pile de serviettes', 'Les étoiles du bassin', 'Petit nuage tiède', 'Ourson en peignoir', 'Le chat du bain chaud'],
+  ['Le champignon moussu', 'Le verger aux yuzus', 'La cabane dans les chênes', 'Le cœur de la clairière', 'Papillons de fougère', 'Le grand capybara des bois'],
+  ['Flocon étoilé', 'Le col de la Patate', 'Ourson sous la neige', 'Nuage de neige', 'Capybara en bonnet', 'La tortue des glaces'],
+  ['Les portes du temple', 'Le chat porte-bonheur', 'Les mille marches', 'Le jardin de mousse', 'Le sage capybara', 'La grande tortue d\'or'],
 ];
 /** Seeds picked by simulation (scripts: random-play win rate ≈ 95% → 35%) for a smooth difficulty curve. */
-export const SEEDS = [1000,214850,16912,32670,40416,53533,143764,70859,81487,128037,100385,112192,120229,199456,140801,150119,161009,25386,72937,193548,199722,210481,168113,230296,240924,33601,261001,274773,279506,65425];
+// Audit 2026-10-30: all levels re-seeded with the smart-bot simulation (src/sim.ts, random shuffles, 8% capydindon) for a
+// smooth curve: bot clear rate ≈ 98% (L1) → ≈ 82% (L30), no spikes (L8 kept: soft-lock repro). L5, L14, L23 hide a capydindon.
+export const SEEDS = [107922,200006,331685,423769,1047529,607937,707940,70859,1010893,1015868,1195061,1200036,1323796,2240559,1531721,1600048,1700051,2196004,1900057,2071331,2107982,2540583,6260672,2518857,2698050,2600078,3214816,2847598,3034710,3000090];
+/** Hints per level: 4 / 3 / 2 in the first worlds, and 2 (not 1) on the big boards of worlds 4–5. */
+export const hintBudget = (world: number) => Math.max(2, 4 - world);
 /** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */
 export const undoBudget = (world: number) => (world === 0 ? -1 : world <= 2 ? 5 : 3);
 export const LEVELS: Level[] = PLAN.flatMap((ls, w) => ls.map((layout, i) => {
   const n = w * 6 + i; const tiles = LAYOUTS[layout].make().length;
-  return { n, world: w, index: i, layout, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: Math.max(1, 4 - w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w) };
+  return { n, world: w, index: i, layout, name: LEVEL_NAMES[w][i], seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: hintBudget(w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w) };
 }));
 
 /** Stars: 3 = within par and no hint; 2 = within 1.6×par or at most 1 hint; 1 = cleared */
