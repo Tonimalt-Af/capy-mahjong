@@ -1,4 +1,4 @@
-import { turtle, type Pos } from './layout';
+import { stack, type Pos } from './layout';
 import { BOARDS } from './boards';
 
 const rect = (out: Pos[], x0: number, y0: number, cols: number, rows: number, z: number) => {
@@ -6,65 +6,25 @@ const rect = (out: Pos[], x0: number, y0: number, cols: number, rows: number, z:
 };
 const build = (...parts: [number, number, number, number, number][]) => { const o: Pos[] = []; parts.forEach((p) => rect(o, ...p)); return o; };
 
-export { grid } from './layout';
-import { grid } from './layout';
-
 export interface LayoutDef { id: string; name: string; make: () => Pos[]; shape?: boolean }
 export const LAYOUTS: Record<string, LayoutDef> = {
   galet: { id: 'galet', name: 'Galet', make: () => build([0, 0, 6, 4, 0], [2, 2, 4, 2, 1], [4, 2, 2, 2, 2]) }, // 36
   pont: { id: 'pont', name: 'Pont', make: () => build([0, 0, 10, 3, 0], [2, 0, 8, 1, 1], [2, 4, 8, 1, 1], [8, 2, 2, 1, 1]) }, // 48
   pyramide: { id: 'pyramide', name: 'Pyramide', make: () => build([0, 0, 8, 5, 0], [2, 2, 6, 3, 1], [4, 4, 4, 1, 2], [6, 4, 2, 1, 3]) }, // 64
-  fleur: { id: 'fleur', name: 'Fleur', make: () => build([6, 0, 4, 8, 0], [0, 4, 3, 4, 0], [14, 4, 3, 4, 0], [8, 4, 2, 4, 1], [8, 6, 2, 2, 2], [2, 6, 1, 2, 1], [16, 6, 1, 2, 1]) }, // 72
-  papillon: { id: 'papillon', name: 'Papillon', make: () => build([0, 0, 4, 5, 0], [12, 0, 4, 5, 0], [8, 2, 2, 3, 0], [2, 2, 2, 3, 1], [14, 2, 2, 3, 1], [8, 2, 2, 3, 1], [8, 4, 2, 1, 2], [4, 10, 1, 1, 0], [20, 10, 1, 1, 0]) }, // 84
-  forteresse: { id: 'forteresse', name: 'Forteresse', make: () => build([0, 0, 10, 6, 0], [0, 0, 2, 2, 1], [16, 0, 2, 2, 1], [0, 8, 2, 2, 1], [16, 8, 2, 2, 1], [0, 0, 1, 2, 2], [18, 0, 1, 2, 2], [0, 8, 1, 2, 2], [18, 8, 1, 2, 2], [6, 4, 4, 2, 1], [8, 4, 2, 2, 2]) }, // 96
-  montagne: { id: 'montagne', name: 'Montagne', make: () => build([0, 0, 12, 6, 0], [2, 2, 10, 4, 1], [8, 4, 4, 2, 2]) }, // 120
-  tortue: { id: 'tortue', name: 'Tortue', make: turtle }, // 144
-  // ---- shaped boards (original patterns)
-  coeur: { id: 'coeur', name: 'Cœur', shape: true, make: () => grid(
-    [0, 0, 0, ['.###..###.', '##########', '##########', '.########.', '..######..', '...####...', '....##....']],
-    [1, 1, 1, ['.##..##.', '########', '.######.', '..####..', '...##...']],
-    [2, 2, 2, ['#....#', '.####.', '..##..']],
-  ) },
-  capy: { id: 'capy', name: 'Capybara', shape: true, make: () => grid( // side view facing right: little ears, blunt head with an eye hole, barrel body, legs
-    [0, 0, 0, ['...........#.#.', '...#######.####', '.###########.##', '###############', '##############.', '.############..', '.##.......##...']],
-    [1, 1, 1, ['...######.....', '.#########....', '.#########....', '..#######.....']],
-    [2, 4, 4, ['#####', '#####']],
-  ) },
-  chat: { id: 'chat', name: 'Chat', shape: true, make: () => grid( // cat head: two pointy ears
-    [0, 0, 0, ['#........#', '##......##', '###.##.###', '##########', '##########', '##########', '.########.', '..######..']],
-    [1, 1, 1, ['#.......#', '.........', '.########', '.#######.', '..######.', '...###...']],
-    [2, 2, 5, ['.####.', '..##..']],
-  ) },
-  ours: { id: 'ours', name: 'Ourson', shape: true, make: () => grid( // bear head: round ears
-    [0, 0, 0, ['##......##', '##.####.##', '.########.', '##########', '##########', '.########.', '..######..']],
-    [1, 1, 1, ['#.......#', '..#####..', '.#######.', '.#######.', '..#####..']],
-    [2, 4, 4, ['###', '###']],
-  ) },
-  etoile: { id: 'etoile', name: 'Étoile', shape: true, make: () => grid(
-    [0, 0, 0, ['......##......', '.....####.....', '##############', '.############.', '...########...', '..####..####..', '.###......###.']],
-    [1, 1, 1, ['.....###.....', '.###########.', '...#######...', '...##...##...']],
-    [2, 10, 2, ['###']],
-  ) },
-  champignon: { id: 'champignon', name: 'Champignon', shape: true, make: () => grid(
-    [0, 0, 0, ['...######...', '.##########.', '############', '############', '....####....', '....####....', '...######...']],
-    [1, 1, 1, ['...#####...', '.#########.', '.#########.', '....###....']],
-    [2, 2, 2, ['..####..', '.######.']],
-  ) },
-  carotte: { id: 'carotte', name: 'Carotte', shape: true, make: () => grid( // lying carrot: leafy top on the left, pointy tip on the right
-    [0, 0, 0, ['##..........', '.#.#######..', '..##########', '.#.#######..', '##..........']],
-    [1, 7, 1, ['######', '######']],
-    [2, 9, 2, ['####']],
-  ) },
-  yuzu: { id: 'yuzu', name: 'Yuzu', shape: true, make: () => grid( // round fruit with a little leaf
-    [0, 0, 0, ['....##....', '..######..', '.########.', '##########', '##########', '.########.', '..######..']],
-    [1, 3, 3, ['.####.', '######', '.####.']],
-    [2, 7, 5, ['##']],
-  ) },
-  nuage: { id: 'nuage', name: 'Nuage', shape: true, make: () => grid( // puffy cloud (onsen steam, mountain snow)
-    [0, 0, 0, ['...###..###...', '..##########..', '##############', '##############', '.############.']],
-    [1, 3, 1, ['.###..###.', '##########', '.########.']],
-    [2, 7, 3, ['###', '###']],
-  ) },
+  fleur: { id: 'fleur', name: 'Fleur', shape: true, make: () => stack([[9, 4], [9, 4]]) }, // 72
+  papillon: { id: 'papillon', name: 'Papillon', shape: true, make: () => stack([[7, 4], [5, 4], [5, 4]]) }, // 68
+  forteresse: { id: 'forteresse', name: 'Forteresse', shape: true, make: () => stack([[10, 4], [8, 4], [6, 4]]) }, // 96
+  montagne: { id: 'montagne', name: 'Montagne', shape: true, make: () => stack([[10, 5], [8, 5], [6, 5]]) }, // 120
+  tortue: { id: 'tortue', name: 'Tortue', shape: true, make: () => stack([[10, 5], [10, 5], [8, 5], [4, 1]]) }, // 144
+  coeur: { id: 'coeur', name: 'Cœur', shape: true, make: () => stack([[10, 3], [8, 3], [8, 3]]) }, // 78
+  capy: { id: 'capy', name: 'Capybara', shape: true, make: () => stack([[10, 4], [10, 4], [8, 4]]) }, // 112
+  chat: { id: 'chat', name: 'Chat', shape: true, make: () => stack([[9, 5], [9, 5]]) }, // 90
+  ours: { id: 'ours', name: 'Ourson', shape: true, make: () => stack([[10, 5], [6, 3], [6, 3]]) }, // 86
+  etoile: { id: 'etoile', name: 'Étoile', shape: true, make: () => stack([[8, 5], [8, 3], [6, 3]]) }, // 82
+  champignon: { id: 'champignon', name: 'Champignon', shape: true, make: () => stack([[10, 5], [8, 5]]) }, // 90
+  carotte: { id: 'carotte', name: 'Carotte', shape: true, make: () => stack([[9, 4], [5, 2]]) }, // 46
+  yuzu: { id: 'yuzu', name: 'Yuzu', shape: true, make: () => stack([[9, 5], [7, 3]]) }, // 66
+  nuage: { id: 'nuage', name: 'Nuage', shape: true, make: () => stack([[9, 4], [9, 2], [9, 2], [7, 2]]) }, // 86
   ...BOARDS,
 };
 
@@ -104,7 +64,7 @@ export const SECRET_STARS = 15;
 // Audit 2026-10-30: all levels re-seeded with the smart-bot simulation (src/sim.ts, random shuffles, 8% capydindon) for a
 // smooth curve: bot clear rate ≈ 98% (L1) → ≈ 82% (L30), no spikes (L8 kept: soft-lock repro). Phase 3: re-seeded for the new
 // boards (L11 and L15 hide a capydindon); seeds 31–35 are the secret levels, each as hard as its world's last level.
-export const SEEDS: number[] = [9100003,9295034,9300009,9423769,9595043,9607937,9707940,70859,9923784,10079220,10187142,10936503,10307958,10431718,10816805,21769291,10747565,11243518,10947571,11055493,11385147,11239661,12020698,11748508,11563427,11607997,11723838,12124763,23005978,12213903,12108012,12223853,12387208,12400102,13355357];
+export const SEEDS: number[] = [9100003,9295034,9300009,9423769,9595043,9607937,9707940,70859,9923784,10079220,10187142,10936503,8,26,10816805,21769291,9,4,10947571,6,3,11239661,1,12,1,11607997,5,6,60,3,12108012,12223853,2,12400102,3];
 /** Hints per level: 4 / 3 / 2 in the first worlds, and 2 (not 1) on the big boards of worlds 4–5. */
 export const hintBudget = (world: number) => Math.max(2, 4 - world);
 /** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */

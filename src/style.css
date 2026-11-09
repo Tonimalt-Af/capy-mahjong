@@ -112,7 +112,8 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
 .tile{position:absolute;border-radius:calc(var(--u)*.16);cursor:pointer;transition:transform .14s cubic-bezier(.3,1.6,.6,1),opacity .3s,filter .2s,translate .3s;
   box-shadow:calc(var(--d)*-1) var(--d) 0 var(--side),calc(var(--d)*-1.7) calc(var(--d)*1.7) 0 var(--side2),calc(var(--d)*-1.5) calc(var(--d)*2.6) calc(var(--d)*2.5) #3b241640}
 .tile svg{width:100%;height:100%;display:block;border-radius:inherit}
-.dim .tile.blocked svg{filter:brightness(.78) saturate(.7)}
+.dim .tile.blocked svg{filter:brightness(.5) saturate(.42)}
+.dim .tile:not(.blocked):not(.gone) svg{filter:brightness(1.04) saturate(1.05)}
 .tile.sel{transform:translateY(-5px) scale(1.04)}
 .tile.sel::after,.tile.hint::after{content:"";position:absolute;inset:-3px;border-radius:inherit;border:3.5px solid var(--gold);box-shadow:0 0 12px #F5B82Eaa;pointer-events:none}
 .tile.hint::after{animation:hint .7s infinite alternate}
@@ -493,9 +494,10 @@ body[data-rack="1"] #g-pairs{display:none!important}
 .rack-slot svg{width:100%;height:100%;display:block;border-radius:inherit}
 .rack-slot.hint,.rack-slot.nudge{outline:3px solid var(--gold);outline-offset:2px}
 @media (max-height:500px){
-  body[data-rack="1"] #v-game.active{position:relative}
+  /* Stay absolutely filling the screen. `relative` would shrink the grid to the side rail and crush the tiles. */
+  body[data-rack="1"] #v-game.active{position:absolute;inset:0}
   body[data-rack="1"] #v-game .hud{position:static}
-  body[data-rack="1"] #g-rack{position:absolute;top:4px;left:90px;right:100px;height:52px;z-index:6;flex:none}
+  body[data-rack="1"] #g-rack{position:absolute;top:2px;left:88px;right:92px;height:48px;z-index:6;flex:none}
   body[data-rack="1"] #g-score{display:none!important}
-  body[data-rack="1"] .rack-slot{width:40px;height:52px}
+  body[data-rack="1"] .rack-slot{width:36px;height:46px}
 }

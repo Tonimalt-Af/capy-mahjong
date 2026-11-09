@@ -111,7 +111,7 @@ test('legendary capydindon: a daily with the golden pair (1 day in 3); matching 
 test('zen difficulty picker: Expert gives a big board, choice is remembered', async ({ page }) => {
   await seed(page); await page.goto('/'); await tap(page, '#h-modes'); await tap(page, '#mo-zen');
   await expect(page.locator('.diff')).toHaveCount(4); await tap(page, '.diff[data-d="expert"]');
-  const st = await G(page).state(); expect(['tortue', 'capy', 'montagne', 'etoile']).toContain(st!.layout);
+  const st = await G(page).state(); expect(['tortue', 'pagode', 'refuge', 'capy', 'montagne', 'etoile']).toContain(st!.layout);
   await expect(page.locator('#g-lvl')).toContainText('Expert'); expect((await saveOf(page)).diff).toBe('expert');
 });
 test('match highlighting is off by default (old saves migrated once), can be turned on in Réglages and stays on', async ({ page }) => {
@@ -135,7 +135,7 @@ for (const lay of ['coeur', 'capy', 'chat', 'ours', 'etoile', 'champignon', 'tor
   await seed(page); await page.goto(`/?mode=zen&seed=2&layout=${lay}`); await page.waitForTimeout(1300);
   const vp = page.viewportSize()!; const boxes = await page.locator('.tile').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom, r.width]; }));
   for (const [l, t, r, b] of boxes) { expect(l).toBeGreaterThanOrEqual(0); expect(t).toBeGreaterThanOrEqual(0); expect(r).toBeLessThanOrEqual(vp.width); expect(b).toBeLessThanOrEqual(vp.height); }
-  expect(Math.min(...boxes.map((b) => b[4]))).toBeGreaterThanOrEqual(['tortue', 'chat'].includes(lay) ? 30 : 34) // 8-row boards (classic turtle size) vs 7-row;
+  expect(Math.min(...boxes.map((b) => b[4]))).toBeGreaterThanOrEqual(44);
   const bar = await page.locator('.bar').boundingBox(); const hud = await page.locator('.hud').boundingBox(); const st = await page.locator('#stage').boundingBox();
   expect(bar && hud && st).toBeTruthy();
 });

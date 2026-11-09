@@ -2,6 +2,7 @@ import '@fontsource/fredoka/latin-400.css'; import '@fontsource/fredoka/latin-60
 import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
 import { deal, isFree, matches, findHint, reshuffle, clearable, type Tile } from './engine';
+import { fitUnit, RACK_BAND } from './fit';
 import { applyRackTap, boardTiles, hasRackMove, rackBoardDead, rackHint, rackShufflePossible, rackWon, reshuffleRack, slotLabel, undoRack, type RackAction } from './rack';
 import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
 import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, runMatchesRules, KEY, CORRUPT_KEY, type Run } from './storage';
@@ -393,18 +394,24 @@ function tick() {
 }
 
 /** Board scale from the stage's CURRENT box (never cached): same stage size → same tile size, whatever happened before. */
-/** Phone landscape keeps the rack as a 52px band inside the board area. Desktop keeps it in the top banner, so the board box is unchanged. */
-function rackBand() { return g && (g.level.rack ?? 0) > 0 && matchMedia('(max-height: 500px)').matches ? 52 : 0; }
+/** Phone landscape keeps the rack as a band inside the board area. Desktop keeps it in the top banner. */
+function rackBand() { return g && (g.level.rack ?? 0) > 0 && matchMedia('(max-height: 500px)').matches ? RACK_BAND : 0; }
 function layout() {
   if (!g) return; const box = stage.getBoundingClientRect(); const W = Math.round(box.width), fullH = Math.round(box.height);
   const band = rackBand(); const H = fullH - band; if (W < 50 || H < 50) return;
   const { cols, rows, x0, y0 } = g.bounds; const ar = 1.3;
-  const zMax = band > 0 ? Math.max(...g.tiles.map((t) => t.z)) : 0;
-  const pad = H < 420 ? 10 : 28; const u = Math.floor(Math.max(6, Math.min((W - 16) / (cols + 1), (H - pad) / (rows * ar + 1.2 + zMax * 0.35))) * 4) / 4; // quarter-px steps: no sub-pixel drift
-  const depth = Math.max(2, u * 0.2);
-  board.style.setProperty('--u', `${u * 2}px`); board.style.width = `${cols * u}px`; board.style.height = `${rows * u * ar}px`;
-  board.style.top = band > 0 ? `${band + H / 2}px` : '50%';
-  board.style.transform = `translate(-50%,-50%) translate(${depth * 2}px,${depth}px)`;
+  const zMax = Math.max(...g.tiles.map((t) => t.z));
+  let u = fitUnit(cols, rows, zMax, W, H);
+  let depth = Math.max(2, u * 0.24);
+  let shift = zMax * depth;
+  // The top layer is drawn up-left of its cell. Pull the scale in if that offset would leave the stage.
+  if (cols * u + shift + 8 > W) { u = Math.floor(((W - shift - 8) / cols) * 4) / 4; depth = Math.max(2, u * 0.24); shift = zMax * depth; }
+  const boardH = rows * u * ar;
+  board.style.setProperty('--u', `${u * 2}px`); board.style.width = `${cols * u}px`; board.style.height = `${boardH}px`;
+  // Anchor so the highest tile sits just under the rack (or the top of the stage), not through it.
+  board.style.top = `${band + shift + boardH / 2 + 2}px`;
+  board.style.left = `${cols * u / 2 + shift + 2}px`;
+  board.style.transform = 'translate(-50%, -50%)';
   for (const t of g.tiles) {
     const d = g.els[t.id];
     d.style.left = `${(t.x - x0) * u - t.z * depth}px`; d.style.top = `${(t.y - y0) * u * ar - t.z * depth}px`;
