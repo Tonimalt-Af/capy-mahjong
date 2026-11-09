@@ -2,8 +2,9 @@ import '@fontsource/fredoka/latin-400.css'; import '@fontsource/fredoka/latin-60
 import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
 import { deal, isFree, matches, findHint, reshuffle, clearable, type Tile } from './engine';
+import { applyRackTap, boardTiles, hasRackMove, rackBoardDead, rackHint, rackShufflePossible, rackWon, reshuffleRack, slotLabel, undoRack, type RackAction } from './rack';
 import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
-import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, KEY, CORRUPT_KEY, type Run } from './storage';
+import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, runMatchesRules, KEY, CORRUPT_KEY, type Run } from './storage';
 import { decorSvg } from './decor';
 import { parseDeep } from './deeplink';
 import { Sound, DEFAULT_MUSIC } from './audio';
@@ -28,6 +29,9 @@ addEventListener('error', () => rescue());
 addEventListener('unhandledrejection', () => rescue());
 const LOADED = loadSave();
 const S = LOADED.save;
+/** A classic in-progress game on a level that now uses the rack (or the reverse) is dropped. Stars and carrots stay. */
+let ruleDropped = false;
+if (S.run && !runMatchesRules(S.run)) { S.run = null; ruleDropped = true; save(S); }
 /** First day of play: missed dailies before it can't be "caught up" (no farming on a brand-new save). */
 if (!S.firstDay) { S.firstDay = firstDayOf(S.stats); save(S); }
 /** French plural: n + word (+ 's' unless given). */
@@ -76,6 +80,7 @@ app.innerHTML = `
 <section class="view" id="v-coll"></section>
 <section class="view" id="v-game">
   <header class="hud"><div class="hbtns"><button class="iconbtn" id="g-pause" aria-label="Pause">${ic('pause')}</button>${musicBtn('g-music')}</div><div class="lvl" id="g-lvl"></div>
+    <div class="rack" id="g-rack" role="list" aria-label="Plateau du haut"></div>
     <div class="chips"><span class="chip combo" id="g-combo"></span><span class="chip leg" id="g-leg" role="status"></span><span class="chip" id="g-pairs"></span><span class="chip" id="g-time">0:00</span><span class="chip" id="g-score">0</span></div></header>
   <main class="stage" id="stage"><div class="board" id="board"></div></main>
   <nav class="bar">
@@ -103,6 +108,7 @@ let view = 'home';
 function show(v: string, world = -1) {
   view = v; document.querySelectorAll('.view').forEach((e) => e.classList.toggle('active', e.id === `v-${v}`));
   document.body.dataset.view = v; closeOv();
+  if (v !== 'game') delete document.body.dataset.rack;
   if (world >= 0) setWorld(world);
 }
 function setWorld(w: number) { const W = WORLDS[w]; document.body.style.setProperty('--w1', W.bg[0]); document.body.style.setProperty('--w2', W.bg[1]); document.body.style.setProperty('--acc', W.accent); document.body.dataset.world = W.id; snd.music(w); }
@@ -138,12 +144,13 @@ function applyEdge() { const e = EDGES.find((x) => x.id === S.edge) ?? EDGES[0];
 const edgeBack = () => (EDGES.find((x) => x.id === S.edge) ?? EDGES[0]).back;
 /** Saved in-progress board, if it still matches the current layouts (and a daily is still today's). */
 function validRun(): Run | null {
-  const r = S.run; if (!r || !LAYOUTS[r.level.layout] || r.kinds.length !== LAYOUTS[r.level.layout].make().length || r.removed.length >= r.kinds.length) return null;
+  const r = S.run; if (!r || !runMatchesRules(r) || !LAYOUTS[r.level.layout] || r.kinds.length !== LAYOUTS[r.level.layout].make().length || r.removed.length >= r.kinds.length) return null;
   if (r.level.mode === 'daily' && !r.level.late && r.level.date !== dayKey()) return null; return r;
 }
 function snapshot() {
   if (!g || g.over) return;
-  S.run = { level: g.level, kinds: g.tiles.map((t) => t.kind), removed: g.tiles.filter((t) => t.removed).map((t) => t.id), history: g.history, t: elapsed(), hints: g.hints, shuffles: g.shuffles, undos: g.undos, undoBonus: g.undoBonus, score: g.score, legends: g.legends, maxCombo: g.maxCombo }; persist();
+  const rackOn = (g.level.rack ?? 0) > 0;
+  S.run = { level: g.level, kinds: g.tiles.map((t) => t.kind), removed: g.tiles.filter((t) => t.removed).map((t) => t.id), history: g.history, t: elapsed(), hints: g.hints, shuffles: g.shuffles, undos: g.undos, undoBonus: g.undoBonus, score: g.score, legends: g.legends, maxCombo: g.maxCombo, ...(rackOn ? { rules: 'rack' as const, rackSlots: g.level.rack, rack: g.rack.slice(), actions: g.actions.map((a) => ({ ...a, rackBefore: a.rackBefore.slice(), rackAfter: a.rackAfter.slice(), removed: a.removed.slice() })), legendSeen: g.legendSeen } : {}) }; persist();
 }
 const base = () => location.origin + location.pathname;
 async function share(text: string, url: string) {
@@ -344,7 +351,7 @@ function renderMap(w = mapWorld) {
 
 // ---------- GAME
 const board = $('board'), stage = $('stage');
-interface G { level: PlayLevel; legends: number; hasLegend: boolean; idle: number; undos: number; undoBonus: number; maxCombo: number; tiles: Tile[]; els: HTMLDivElement[]; sel: Tile | null; history: [number, number][]; solution: [number, number][]; start: number; paused: number; pausedAt: number; hints: number; shuffles: number; combo: number; lastMatch: number; score: number; over: boolean; coach: boolean; bounds: { x0: number; y0: number; cols: number; rows: number } }
+interface G { level: PlayLevel; legends: number; hasLegend: boolean; legendSeen: boolean; idle: number; undos: number; undoBonus: number; maxCombo: number; tiles: Tile[]; els: HTMLDivElement[]; sel: Tile | null; history: [number, number][]; rack: number[]; actions: RackAction[]; solution: [number, number][]; start: number; paused: number; pausedAt: number; hints: number; shuffles: number; combo: number; lastMatch: number; score: number; over: boolean; coach: boolean; coachRack: boolean; coachPair: [number, number] | null; coachPairTold: number; rackTold: boolean; bounds: { x0: number; y0: number; cols: number; rows: number } }
 let g: G | null = null; let timer = 0;
 const elapsed = () => (g ? Math.floor(((g.pausedAt || Date.now()) - g.start - g.paused) / 1000) : 0);
 
@@ -355,8 +362,12 @@ function startPlay(level: PlayLevel, resume?: Run) {
   if (resume) { tiles.forEach((t, i) => { t.kind = resume.kinds[i]; }); for (const id of resume.removed) tiles[id].removed = true; }
   const xs = pos.map((p) => p.x), ys = pos.map((p) => p.y);
   const x0 = Math.min(...xs), y0 = Math.min(...ys);
-  g = { level, legends: 0, hasLegend: tiles.some((t) => t.kind === 'capydindon'), idle: Date.now(), undos: 0, undoBonus: 0, maxCombo: 0, tiles, els: [], sel: null, history: [], solution, start: Date.now(), paused: 0, pausedAt: 0, hints: 0, shuffles: 0, combo: 0, lastMatch: 0, score: 0, over: false, coach: !resume && level.mode === 'level' && level.n === 0 && S.stats.won === 0, bounds: { x0, y0, cols: Math.max(...xs) - x0 + 2, rows: Math.max(...ys) - y0 + 2 } };
-  if (resume) Object.assign(g, { history: resume.history, hints: resume.hints, shuffles: resume.shuffles, undos: resume.undos, undoBonus: resume.undoBonus ?? 0, score: resume.score, legends: resume.legends, maxCombo: resume.maxCombo, start: Date.now() - resume.t * 1000 });
+  const rackOn = (level.rack ?? 0) > 0;
+  const coachRack = !resume && rackOn && !S.seenRack;
+  if (coachRack) S.seenRack = true;
+  g = { level, legends: 0, hasLegend: tiles.some((t) => t.kind === 'capydindon'), legendSeen: false, idle: Date.now(), undos: 0, undoBonus: 0, maxCombo: 0, tiles, els: [], sel: null, history: [], rack: [], actions: [], solution, start: Date.now(), paused: 0, pausedAt: 0, hints: 0, shuffles: 0, combo: 0, lastMatch: 0, score: 0, over: false, coach: !resume && !rackOn && level.mode === 'level' && level.n === 0 && S.stats.won === 0, coachRack, coachPair: null, coachPairTold: 0, rackTold: false, bounds: { x0, y0, cols: Math.max(...xs) - x0 + 2, rows: Math.max(...ys) - y0 + 2 } };
+  if (resume) Object.assign(g, { history: resume.history, hints: resume.hints, shuffles: resume.shuffles, undos: resume.undos, undoBonus: resume.undoBonus ?? 0, score: resume.score, legends: resume.legends, legendSeen: !!resume.legendSeen, maxCombo: resume.maxCombo, start: Date.now() - resume.t * 1000, rack: resume.rack?.slice() ?? [], actions: (resume.actions ?? []).map((a) => ({ ...a, rackBefore: a.rackBefore.slice(), rackAfter: a.rackAfter.slice(), removed: a.removed.slice() })) });
+  document.body.dataset.rack = rackOn ? '1' : '0';
   board.innerHTML = '';
   const order = tiles.slice().sort((a, b) => a.z - b.z || a.x - b.x || b.y - a.y);
   order.forEach((t, i) => {
@@ -376,16 +387,23 @@ function startPlay(level: PlayLevel, resume?: Run) {
 function tick() {
   if (!g || g.over || g.pausedAt) return; $('g-time').textContent = fmt(elapsed());
   // optional auto-hint: after 20 s without a move, gently nudge one playable pair (free, never counted)
-  if (S.settings.autohint && view === 'game' && !$('ov').classList.contains('show') && Date.now() - g.idle > 20000 && !board.querySelector('.nudge')) { const x = findHint(g.tiles); if (x) x.forEach((t) => g!.els[t.id].classList.add('nudge')); }
+  if (S.settings.autohint && view === 'game' && !$('ov').classList.contains('show') && Date.now() - g.idle > 20000 && !board.querySelector('.nudge') && !document.querySelector('.rack-slot.nudge')) {
+    if ((g.level.rack ?? 0) > 0) nudgeRack(); else { const x = findHint(g.tiles); if (x) x.forEach((t) => g!.els[t.id].classList.add('nudge')); }
+  }
 }
 
 /** Board scale from the stage's CURRENT box (never cached): same stage size → same tile size, whatever happened before. */
+/** Phone landscape keeps the rack as a 52px band inside the board area. Desktop keeps it in the top banner, so the board box is unchanged. */
+function rackBand() { return g && (g.level.rack ?? 0) > 0 && matchMedia('(max-height: 500px)').matches ? 52 : 0; }
 function layout() {
-  if (!g) return; const box = stage.getBoundingClientRect(); const W = Math.round(box.width), H = Math.round(box.height); if (W < 50 || H < 50) return;
+  if (!g) return; const box = stage.getBoundingClientRect(); const W = Math.round(box.width), fullH = Math.round(box.height);
+  const band = rackBand(); const H = fullH - band; if (W < 50 || H < 50) return;
   const { cols, rows, x0, y0 } = g.bounds; const ar = 1.3;
-  const pad = H < 420 ? 10 : 28; const u = Math.floor(Math.max(6, Math.min((W - 16) / (cols + 1), (H - pad) / (rows * ar + 1.2))) * 4) / 4; // quarter-px steps: no sub-pixel drift
+  const zMax = band > 0 ? Math.max(...g.tiles.map((t) => t.z)) : 0;
+  const pad = H < 420 ? 10 : 28; const u = Math.floor(Math.max(6, Math.min((W - 16) / (cols + 1), (H - pad) / (rows * ar + 1.2 + zMax * 0.35))) * 4) / 4; // quarter-px steps: no sub-pixel drift
   const depth = Math.max(2, u * 0.2);
   board.style.setProperty('--u', `${u * 2}px`); board.style.width = `${cols * u}px`; board.style.height = `${rows * u * ar}px`;
+  board.style.top = band > 0 ? `${band + H / 2}px` : '50%';
   board.style.transform = `translate(-50%,-50%) translate(${depth * 2}px,${depth}px)`;
   for (const t of g.tiles) {
     const d = g.els[t.id];
@@ -402,37 +420,71 @@ addEventListener('resize', relayout); addEventListener('orientationchange', rela
 screen.orientation?.addEventListener?.('change', relayout);
 if ('ResizeObserver' in window) new ResizeObserver(relayout).observe(stage);
 
+const HAND = '<svg viewBox="0 0 40 48"><path d="M14 4c2.2 0 4 1.8 4 4v14l2-.3V17c0-2 1.6-3.5 3.5-3.5S27 15 27 17v5l1.6.2c2-.2 3.6 1.3 3.8 3.3l.6 6.5c.4 5-2 9.6-6.5 11.6L22 46H12l-6.5-10.3c-1-1.6-.6-3.7 1-4.7 1.4-1 3.4-.7 4.4.6L10 30V8c0-2.2 1.8-4 4-4z" fill="#fff" stroke="#3B2A20" stroke-width="2.6" stroke-linejoin="round"/></svg>';
+function pointAt(el: HTMLElement) {
+  el.classList.add('coach');
+  const hnd = document.createElement('i'); hnd.className = 'hand'; hnd.setAttribute('aria-hidden', 'true'); hnd.innerHTML = HAND; el.appendChild(hnd);
+}
 /** First-ever game: make the first pair glow and point at it, until it's matched. */
 function coach() {
   if (!g) return; board.querySelectorAll('.coach').forEach((e) => e.classList.remove('coach')); board.querySelector('.hand')?.remove();
   if (g.history.length) { g.coach = false; toast('Bravo ! Continue jusqu\'à vider le plateau', 2200); return; }
   const x = findHint(g.tiles); if (!x) return; x.forEach((t) => g!.els[t.id].classList.add('coach'));
   const target = g.sel && x.includes(g.sel) ? x.find((t) => t !== g!.sel)! : x[0];
-  const hnd = document.createElement('i'); hnd.className = 'hand'; hnd.setAttribute('aria-hidden', 'true'); hnd.innerHTML = '<svg viewBox="0 0 40 48"><path d="M14 4c2.2 0 4 1.8 4 4v14l2-.3V17c0-2 1.6-3.5 3.5-3.5S27 15 27 17v5l1.6.2c2-.2 3.6 1.3 3.8 3.3l.6 6.5c.4 5-2 9.6-6.5 11.6L22 46H12l-6.5-10.3c-1-1.6-.6-3.7 1-4.7 1.4-1 3.4-.7 4.4.6L10 30V8c0-2.2 1.8-4 4-4z" fill="#fff" stroke="#3B2A20" stroke-width="2.6" stroke-linejoin="round"/></svg>';
-  g.els[target.id].appendChild(hnd);
+  pointAt(g.els[target.id]);
+}
+/** First rack game: point at a free tile, then at its mate, then explain a full rack. */
+function coachRack() {
+  const game = g; if (!game?.coachRack) return;
+  board.querySelectorAll('.coach').forEach((e) => e.classList.remove('coach')); board.querySelector('.hand')?.remove();
+  if (game.actions.some((a) => a.type === 'match')) { game.coachRack = false; toast('Si le plateau du haut se remplit sans paire possible, tu es bloqué. Annuler ou mélanger peut t\'aider.', 4200); return; }
+  if (!game.coachPair) { const h = rackHint(game.tiles, game.rack, game.level.rack); if (h?.kind === 'pair') game.coachPair = h.ids; }
+  const pair = game.coachPair;
+  const onBoard = boardTiles(game.tiles, game.rack);
+  if (!game.rack.length && pair) { pointAt(game.els[pair[0]]); if (!game.coachPairTold) { game.coachPairTold = 1; toast('Touche une tuile libre : elle monte dans le plateau du haut.', 3200); } return; }
+  const mate = game.rack.length ? onBoard.find((t) => isFree(t, onBoard) && game.rack.some((id) => matches(game.tiles[id].kind, t.kind))) : undefined;
+  if (mate) { pointAt(game.els[mate.id]); if (game.coachPairTold < 2) { game.coachPairTold = 2; toast('Touche sa paire : elles disparaissent.', 3200); } }
+}
+function renderRack() {
+  const host = $('g-rack'); if (!g) return;
+  const slots = g.level.rack ?? 0;
+  if (slots <= 0) { host.innerHTML = ''; return; }
+  host.innerHTML = Array.from({ length: slots }, (_, i) => {
+    const id = g!.rack[i];
+    const kind = id === undefined ? null : g!.tiles[id].kind;
+    const face = kind ? `<svg viewBox="0 0 100 130"><use href="#k-${kind}"/></svg>` : '';
+    return `<div class="rack-slot${kind ? '' : ' empty'}" role="listitem" data-i="${i}" ${id === undefined ? '' : `data-id="${id}"`} aria-label="${esc(slotLabel(i, slots, kind))}">${face}</div>`;
+  }).join('');
 }
 function refresh() {
-  if (!g) return; const live = g.tiles.filter((t) => !t.removed);
+  if (!g) return; const rackOn = (g.level.rack ?? 0) > 0; const held = new Set(g.rack);
+  const live = g.tiles.filter((t) => !t.removed && !held.has(t.id));
   document.body.classList.toggle('dim', S.settings.dim);
   for (const t of g.tiles) {
-    const d = g.els[t.id]; const free = !t.removed && isFree(t, live); d.classList.toggle('gone', t.removed); d.classList.toggle('blocked', !t.removed && !free); d.classList.toggle('sel', g.sel === t); d.classList.remove('hint', 'nudge'); d.tabIndex = free ? 0 : -1; d.setAttribute('aria-pressed', String(g.sel === t)); d.setAttribute('aria-disabled', String(!free));
-    d.classList.toggle('mate', !!(S.settings.hl && g.sel && g.sel !== t && free && matches(g.sel.kind, t.kind)));
-    if (d.dataset.kind !== t.kind) { d.dataset.kind = t.kind; d.querySelector('use')!.setAttribute('href', `#k-${t.kind}`); }
+    const d = g.els[t.id]; const parked = held.has(t.id); const free = !t.removed && !parked && isFree(t, live);
+    d.classList.toggle('gone', t.removed || parked); d.classList.toggle('blocked', !t.removed && !parked && !free); d.classList.toggle('sel', !rackOn && g.sel === t); d.classList.remove('hint', 'nudge'); d.tabIndex = free ? 0 : -1; d.setAttribute('aria-pressed', String(!rackOn && g.sel === t)); d.setAttribute('aria-disabled', String(!free));
+    const mate = rackOn ? !!(S.settings.hl && free && g.rack.some((id) => matches(g!.tiles[id].kind, t.kind))) : !!(S.settings.hl && g.sel && g.sel !== t && free && matches(g.sel.kind, t.kind));
+    d.classList.toggle('mate', mate);
+    if (d.dataset.kind !== t.kind) { d.dataset.kind = t.kind; d.querySelector('use')!.setAttribute('href', `#k-${t.kind}`); d.setAttribute('aria-label', KIND_BY_ID.get(t.kind)!.name); }
   }
-  $('g-pairs').textContent = pl(live.length / 2, 'paire'); $('g-score').textContent = String(g.score);
+  renderRack();
+  const left = g.tiles.filter((t) => !t.removed);
+  $('g-pairs').textContent = pl(left.length / 2, 'paire'); $('g-score').textContent = String(g.score);
   const hl = g.level.hints - g.hints, sl = g.level.shuffles - g.shuffles;
   const zen = g.level.mode === 'zen'; $('g-hint-n').textContent = zen ? '∞' : String(hl); $('g-shuf-n').textContent = zen ? '∞' : String(sl);
-  ($('g-hint') as HTMLButtonElement).disabled = hl <= 0; ($('g-shuf') as HTMLButtonElement).disabled = sl <= 0; const ul = undoLeft(); $('g-undo-n').textContent = ul === Infinity ? '∞' : String(ul); ($('g-undo') as HTMLButtonElement).disabled = !g.history.length || ul <= 0;
+  ($('g-hint') as HTMLButtonElement).disabled = hl <= 0; ($('g-shuf') as HTMLButtonElement).disabled = sl <= 0; const ul = undoLeft(); $('g-undo-n').textContent = ul === Infinity ? '∞' : String(ul);
+  ($('g-undo') as HTMLButtonElement).disabled = (rackOn ? !g.actions.length : !g.history.length) || ul <= 0;
   if (g.over) return;
-  if (g.coach) coach(); if (live.length) snapshot();
-  if (!live.length) win();
-  else if (!findHint(g.tiles)) setTimeout(() => g && !g.over && noMoves(), 450);
+  if (g.coach) coach(); if (g.coachRack) coachRack(); if (left.length) snapshot();
+  if (rackOn ? rackWon(g.tiles) : !left.length) win();
+  else if (rackOn ? !hasRackMove(g.tiles, g.rack, g.level.rack) : !findHint(g.tiles)) setTimeout(() => g && !g.over && noMoves(), 450);
 }
 let comboT = 0;
 function pop(x: number, y: number, txt: string) { const e = document.createElement('div'); e.className = 'pop'; e.textContent = txt; e.style.left = `${x}px`; e.style.top = `${y}px`; document.body.appendChild(e); setTimeout(() => e.remove(), 900); }
 function center(t: Tile) { const r = g!.els[t.id].getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
 function tap(t: Tile) {
   if (!g || g.over || g.pausedAt || t.removed) return;
+  if ((g.level.rack ?? 0) > 0) { tapRackTile(t); return; }
   g.idle = Date.now();
   const live = g.tiles.filter((x) => !x.removed);
   if (!isFree(t, live)) { const d = g.els[t.id]; d.classList.remove('shake'); void d.offsetWidth; d.classList.add('shake'); snd.play('invalid'); buzz(25); toast(S.stats.won < 3 ? 'Tuile bloquée : il lui faut un côté libre (gauche ou droite) et rien dessus' : 'Tuile bloquée', S.stats.won < 3 ? 2600 : 1500); return; }
@@ -450,17 +502,49 @@ function tap(t: Tile) {
   } else { if (g.sel) snd.play('select'); else snd.play('select'); g.sel = t; }
   refresh();
 }
+function tapRackTile(t: Tile) {
+  if (!g || g.rack.includes(t.id)) return;
+  g.idle = Date.now();
+  const res = applyRackTap(g.tiles, g.rack, g.level.rack, t.id);
+  if (!res.ok) {
+    const d = g.els[t.id]; d.classList.remove('shake'); void d.offsetWidth; d.classList.add('shake'); snd.play('invalid'); buzz(25);
+    if (res.reason === 'full') toast('Le plateau du haut est plein.');
+    else if (res.reason === 'blocked') toast(S.stats.won < 3 ? 'Tuile bloquée : il lui faut un côté libre (gauche ou droite) et rien dessus' : 'Tuile bloquée', S.stats.won < 3 ? 2600 : 1500);
+    return;
+  }
+  g.rack = res.action.rackAfter;
+  if (res.action.type === 'take') { g.actions.push(res.action); snd.play('select'); refresh(); return; }
+  const now = Date.now(); g.combo = now - g.lastMatch < 4000 ? g.combo + 1 : 0; g.lastMatch = now;
+  const gain = 100 + Math.min(g.combo, 5) * 25; g.score += gain; res.action.gain = gain;
+  g.maxCombo = Math.max(g.maxCombo, g.combo + 1);
+  const [rackId, boardId] = res.action.removed; const a = g.tiles[rackId], b = g.tiles[boardId];
+  g.history.push([rackId, boardId]); g.actions.push(res.action);
+  const [ax, ay] = center(a), [bx, by] = center(b); fx.burst(ax, ay, 12 + g.combo * 2); fx.burst(bx, by, 12 + g.combo * 2);
+  pop((ax + bx) / 2, Math.min(ay, by) - 10, `+${gain}`);
+  if (a.kind === 'capydindon') { legendFound(ax, ay, bx, by); res.action.gain += 1000; } else { snd.play('match', g.combo); buzz(12); }
+  if (g.combo === 3) earnUndo((ax + bx) / 2, Math.min(ay, by));
+  const cb = $('g-combo'); if (g.combo >= 1) { cb.textContent = `Combo ×${g.combo + 1}`; cb.classList.remove('show', 'bump'); void cb.offsetWidth; cb.classList.add('show', 'bump'); clearTimeout(comboT); comboT = window.setTimeout(() => cb.classList.remove('show'), 4000); }
+  refresh();
+}
 board.addEventListener('pointerdown', (e) => { const d = (e.target as HTMLElement).closest('.tile') as HTMLElement | null; if (d && g) { e.preventDefault(); tap(g.tiles[+d.dataset.id!]); } });
+$('g-rack').addEventListener('pointerdown', (e) => {
+  const slot = (e.target as HTMLElement).closest('.rack-slot') as HTMLElement | null;
+  if (!slot || !g || slot.classList.contains('empty') || g.rackTold) return;
+  g.rackTold = true; toast('Elle attend sa paire. Annuler pour la reposer.');
+});
 
 function legendChip() {
   const c = $('g-leg'); if (!g || !g.hasLegend) { c.classList.remove('show'); return; }
+  const cleared = g.tiles.filter((t) => t.kind === 'capydindon' && t.removed).length >= 2;
+  if ((g.level.rack ?? 0) > 0) g.legends = cleared ? 1 : 0;
   c.classList.add('show'); c.classList.toggle('found', g.legends > 0);
   c.innerHTML = `<svg viewBox="0 0 100 130"><use href="#k-capydindon"/></svg><span>${g.legends ? 'Trouvé !' : 'Caché'}</span>`;
   c.title = g.legends ? 'Capydindon légendaire trouvé' : 'Un capydindon légendaire se cache dans ce plateau';
 }
 function legendFound(ax: number, ay: number, bx: number, by: number) {
   if (!g) return; g.score += 1000; const gold = ['#FFD45C', '#FFF4C2', '#F2A81D', '#FFFFFF', '#E8344E'];
-  if (!g.legends) { g.legends++; S.stats.legends++; persist(); }
+  if (!g.legendSeen) { g.legendSeen = true; S.stats.legends++; persist(); }
+  g.legends = 1;
   fx.burst(ax, ay, 40, gold); fx.burst(bx, by, 40, gold); pop((ax + bx) / 2, Math.min(ay, by) - 34, '+1000');
   snd.play('legend'); buzz(60); legendChip(); const c = $('g-leg'); c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump');
 }
@@ -468,17 +552,39 @@ function legendFound(ax: number, ay: number, bx: number, by: number) {
 const undoLeft = () => { if (!g) return 0; const lim = g.level.undos ?? -1; return lim < 0 ? Infinity : Math.max(0, lim + g.undoBonus - g.undos); };
 const undoLimited = () => !!g && (g.level.undos ?? -1) >= 0;
 function earnUndo(x: number, y: number) { if (!g || !undoLimited()) return; g.undoBonus++; pop(x, y + 34, '+1 annulation'); const b = $('g-undo-n'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
-function doUndo() { if (!g || g.over || !g.history.length) return; if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; } const x = g.history.pop(); if (!x) return; g.undos++; g.idle = Date.now(); g.tiles[x[0]].removed = g.tiles[x[1]].removed = false; g.sel = null; g.score = Math.max(0, g.score - 100); g.combo = 0; snd.play('click'); closeOv(); release(); refresh(); }
+function doUndo() {
+  if (!g || g.over) return;
+  if ((g.level.rack ?? 0) > 0) {
+    if (!g.actions.length) return;
+    if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; }
+    const a = undoRack(g.tiles, g.actions); if (!a) return;
+    g.undos++; g.idle = Date.now(); g.rack = a.rackBefore.slice(); g.score = Math.max(0, g.score - a.gain);
+    if (a.type === 'match') { g.history.pop(); g.combo = 0; }
+    snd.play('click'); closeOv(); release(); refresh(); legendChip(); return;
+  }
+  if (!g.history.length) return; if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; } const x = g.history.pop(); if (!x) return; g.undos++; g.idle = Date.now(); g.tiles[x[0]].removed = g.tiles[x[1]].removed = false; g.sel = null; g.score = Math.max(0, g.score - 100); g.combo = 0; snd.play('click'); closeOv(); release(); refresh();
+}
 /** Stop the clock while an end-of-moves card is up; release() restarts it. */
 function hold() { if (g && !g.pausedAt) g.pausedAt = Date.now(); }
 function release() { if (g && g.pausedAt) { g.paused += Date.now() - g.pausedAt; g.pausedAt = 0; } }
-function doHint() { if (!g || g.over || (g.hints >= g.level.hints && g.level.mode !== 'zen')) return; const x = findHint(g.tiles); if (!x) return; g.hints++; g.idle = Date.now(); g.sel = null; refresh(); x.forEach((t) => g!.els[t.id].classList.add('hint')); snd.play('hint'); }
+function showRackHint(h: NonNullable<ReturnType<typeof rackHint>>, cls: 'hint' | 'nudge') {
+  if (!g) return;
+  if (h.kind === 'match') { g.els[h.boardId].classList.add(cls); document.querySelector(`.rack-slot[data-id="${h.rackId}"]`)?.classList.add(cls); }
+  else h.ids.forEach((id) => g!.els[id].classList.add(cls));
+}
+function nudgeRack() { if (!g) return; const h = rackHint(g.tiles, g.rack, g.level.rack); if (h) showRackHint(h, 'nudge'); }
+function doHint() {
+  if (!g || g.over || (g.hints >= g.level.hints && g.level.mode !== 'zen')) return;
+  if ((g.level.rack ?? 0) > 0) { const h = rackHint(g.tiles, g.rack, g.level.rack); if (!h) return; g.hints++; g.idle = Date.now(); refresh(); showRackHint(h, 'hint'); snd.play('hint'); return; }
+  const x = findHint(g.tiles); if (!x) return; g.hints++; g.idle = Date.now(); g.sel = null; refresh(); x.forEach((t) => g!.els[t.id].classList.add('hint')); snd.play('hint');
+}
 /** Shuffle the remaining faces. A shuffle is only spent when it worked; when no arrangement can clear the board, the end card explains it.
  * Undo history is kept: a removed pair still matches after a shuffle, so undoing stays valid. */
 function doShuffle() {
   if (!g || g.over || (g.shuffles >= g.level.shuffles && g.level.mode !== 'zen')) return;
   const left = g.tiles.filter((t) => !t.removed).length;
-  const res = reshuffle(g.tiles, (g.level.seed + (g.shuffles + 1) * 7919 + left * 131 + g.undos) >>> 0);
+  const seed = (g.level.seed + (g.shuffles + 1) * 7919 + left * 131 + g.undos) >>> 0;
+  const res = (g.level.rack ?? 0) > 0 ? reshuffleRack(g.tiles, g.rack, g.level.rack, seed) : reshuffle(g.tiles, seed);
   if (res === 'dead') { snd.play('invalid'); noMoves(true); return; }
   g.shuffles++; g.sel = null; g.idle = Date.now(); snd.play('shuffle'); g.els.forEach((d) => { d.classList.remove('flip'); void d.offsetWidth; d.classList.add('flip'); }); closeOv(); release(); refresh(); toast('Tuiles mélangées');
 }
@@ -578,14 +684,17 @@ function win() {
 /** No free pair left (or a shuffle proved the board can't be cleared). Always offers a way out: undo, shuffle, restart or quit. */
 function noMoves(knownDead = false) {
   if (!g || g.over) return;
-  const zen = g.level.mode === 'zen'; const endl = g.level.mode === 'endless';
-  const dead = knownDead || clearable(g.tiles.filter((t) => !t.removed)) === false;
-  const canShuf = !dead && (g.shuffles < g.level.shuffles || zen);
-  const canUndo = g.history.length > 0 && undoLeft() > 0; const hasPair = !!findHint(g.tiles);
+  const zen = g.level.mode === 'zen'; const endl = g.level.mode === 'endless'; const rackOn = (g.level.rack ?? 0) > 0;
+  const resting = rackOn ? boardTiles(g.tiles, g.rack) : g.tiles.filter((t) => !t.removed);
+  const dead = knownDead || (rackOn ? rackBoardDead(g.tiles, g.rack) : clearable(resting) === false);
+  const canShuf = !dead && (rackOn ? rackShufflePossible(g.tiles, g.rack, g.level.rack) : true) && (g.shuffles < g.level.shuffles || zen);
+  const canUndo = (rackOn ? g.actions.length > 0 : g.history.length > 0) && undoLeft() > 0;
+  const hasPair = rackOn ? hasRackMove(g.tiles, g.rack, g.level.rack) : !!findHint(g.tiles);
+  const rackStuck = rackOn && !dead;
   const undoBtn = `<button class="btn" id="n-undo" ${canUndo ? '' : 'disabled'}>${ic('undo')}<span>Annuler${undoLimited() ? ` (${undoLeft()})` : ''}</span></button>`;
   const exits = `<div class="row small"><button class="btn" id="n-retry">${ic('retry')}<span>Recommencer</span></button><button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>Quitter</span></button></div>`;
   hold();
-  if (canShuf) openOv(`<h2>Plus de paires</h2><div class="capy-s">${capySvg('bonnet')}</div><p>Aucune paire libre. Mélange les tuiles restantes, ou annule un coup.</p>
+  if (canShuf) openOv(`<h2>${rackStuck ? 'Plateau du haut plein' : 'Plus de paires'}</h2><div class="capy-s">${capySvg('bonnet')}</div><p>${rackStuck ? 'Plus aucune paire ne peut entrer dans le plateau du haut. Mélange les tuiles du plateau, ou annule un coup.' : 'Aucune paire libre. Mélange les tuiles restantes, ou annule un coup.'}</p>
     <div class="row">${undoBtn}<button class="btn primary" id="n-shuf">${ic('shuffle')}<span>Mélanger${zen ? '' : ` (${g.level.shuffles - g.shuffles})`}</span></button></div>${exits}`, 'lose');
   else if (dead && hasPair) openOv(`<h2>Tuiles coincées</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>Même mélangées, les tuiles restantes ne pourront plus toutes partir (elles sont empilées). Ton mélange n'a pas été utilisé.</p>
     <div class="row">${canUndo ? undoBtn : ''}<button class="btn" id="n-cont">${ic('play')}<span>Continuer</span></button></div>${exits}`, 'lose');
@@ -593,7 +702,7 @@ function noMoves(knownDead = false) {
     // End screen. Getting stuck after a few unlucky moves is part of the game: no rescue, but undo stays possible while the budget allows.
     if (!canUndo) { g.over = true; snd.play('lose'); record(false, elapsed()); } else snd.play('invalid');
     const why = endl ? `Plus de paires possibles. ${(g.level.round ?? 0) > 1 ? 'Manches réussies' : 'Manche réussie'} : <b>${g.level.round}</b> · Record : <b>${S.stats.endlessBest}</b>`
-      : dead ? `Les tuiles restantes sont coincées : impossible de vider le plateau.${zen ? '' : ' Ton mélange n\'a pas été utilisé.'}` : 'Plus de paires libres et plus de mélanges.';
+      : dead ? `Les tuiles restantes sont coincées : impossible de vider le plateau.${zen ? '' : ' Ton mélange n\'a pas été utilisé.'}` : rackStuck ? 'Plus aucune paire ne peut entrer dans le plateau du haut.' : 'Plus de paires libres et plus de mélanges.';
     openOv(`<h2>${endl ? 'Fin de la course' : 'Plus de coups'}</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>${why}${canUndo ? ' Tu peux encore annuler un coup.' : ' Le capybara t\'attend pour réessayer !'}</p>
     <div class="row">${canUndo ? undoBtn : ''}<button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>Quitter</span></button><button class="btn primary" id="n-retry">${ic('retry')}<span>${endl ? 'Nouvelle course' : 'Recommencer'}</span></button></div>`, 'lose');
   }
@@ -640,10 +749,12 @@ function saveCode(back: () => void) {
 }
 function howTo(then?: () => void) {
   const tile = (k: string, cls = '') => `<div class="ht-tile ${cls}"><svg viewBox="0 0 100 130"><use href="#k-${k}"/></svg></div>`;
+  const rackCard = unlocked(S, 6) || (!!g && (g.level.rack ?? 0) > 0);
   openOv(`<h2>Comment jouer</h2><div class="how">
    <div class="hstep"><div class="hart">${tile('fraise-3')}${tile('fraise-3')}</div><p>Touche deux tuiles identiques pour les retirer.</p></div>
    <div class="hstep"><div class="hart">${tile('agrume-1', 'blk')}${tile('canard')}${tile('agrume-2', 'blk')}</div><p>Une tuile est libre si rien n'est dessus et si son côté gauche ou droit est dégagé.</p></div>
-   <div class="hstep"><div class="hart">${tile('printemps')}${tile('hiver')}</div><p>Les saisons vont ensemble, les fleurs aussi. Vide le plateau pour gagner !</p></div></div>
+   <div class="hstep"><div class="hart">${tile('printemps')}${tile('hiver')}</div><p>Les saisons vont ensemble, les fleurs aussi. Vide le plateau pour gagner !</p></div>
+   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>En dehors de la Rivière, une tuile libre monte dans le plateau du haut. Touche sa paire pour les retirer. Un plateau du haut plein, sans paire possible, bloque la partie.</p></div>` : ''}</div>
    <div class="row"><button class="btn primary" id="ht-ok">${then ? 'C\'est parti !' : 'Compris'}</button></div>`, 'howto');
   $('ht-ok').onclick = () => { S.seenHowTo = true; persist(); closeOv(); then?.(); };
 }
@@ -659,6 +770,29 @@ function howTo(then?: () => void) {
       const live = g.tiles.filter((t) => !t.removed); const ok = ([a, b]: [number, number]) => !g!.tiles[a].removed && !g!.tiles[b].removed && isFree(g!.tiles[a], live) && isFree(g!.tiles[b], live) && matches(g!.tiles[a].kind, g!.tiles[b].kind);
       const p = g.solution.find(ok); const h = p ? [g.tiles[p[0]], g.tiles[p[1]]] : findHint(g.tiles); if (!h) return; tap(h[0]); tap(h[1]);
     }
+  },
+  /** Keep taking and matching until the rack game is won or has no legal move. */
+  playOut: () => {
+    if (!g) return;
+    const slots = g.level.rack ?? 0;
+    for (let i = 0; i < 400 && g && !g.over; i++) {
+      if (slots <= 0) { const h = findHint(g.tiles); if (!h) return; tap(h[0]); tap(h[1]); continue; }
+      if (rackWon(g.tiles) || !hasRackMove(g.tiles, g.rack, slots)) return;
+      const h = rackHint(g.tiles, g.rack, slots);
+      if (h?.kind === 'match') { tap(g.tiles[h.boardId]); continue; }
+      if (h?.kind === 'pair') { tap(g.tiles[h.ids[0]]); tap(g.tiles[h.ids[1]]); continue; }
+      const on = boardTiles(g.tiles, g.rack); const free = on.find((t) => isFree(t, on)); if (!free) return; tap(free);
+    }
+  },
+  /** Test hook: a full rack and two free tiles that match nothing in it. The stuck card follows. */
+  forceRackStuck: () => {
+    if (!g || !(g.level.rack > 0)) return;
+    const slots = g.level.rack;
+    const kinds = ['canard', 'couronne', 'paille', 'serviette', 'bonnet', 'lunettes', 'agrume-1', 'fraise-1'];
+    for (const t of g.tiles) t.removed = true;
+    for (let i = 0; i < slots + 2; i++) { const t = g.tiles[i]; t.removed = false; t.x = i * 4; t.y = 0; t.z = 0; t.kind = kinds[i]; }
+    g.rack = Array.from({ length: slots }, (_, i) => i); g.actions = []; g.history = []; g.sel = null;
+    layout(); refresh();
   },
   legend: () => g && g.tiles.filter((t) => t.kind === 'capydindon' && !t.removed).map((t) => t.id),
   select: (n: number) => { if (!g) return; const x = findHint(g.tiles); if (x && n) tap(x[0]); },
@@ -685,6 +819,7 @@ if (deep?.kind === 'level') {
   startPlay(deep.legend ? { ...z, legend: 1 } : z);
 } else if (deep?.kind === 'endless') { endlessSeed = newSeed(); startPlay(endlessLevel(0, endlessSeed)); }
 if (bad) setTimeout(() => toast('Lien invalide : retour à l\'accueil', 2500), 300);
+if (ruleDropped) setTimeout(() => toast('Ce niveau a changé : on reprend depuis le début.', 4000), 400);
 if (LOADED.status === 'backup') setTimeout(() => toast('Sauvegarde abîmée : ta copie de secours a été restaurée', 4000), 400);
 else if (LOADED.status === 'lost') setTimeout(() => toast('Sauvegarde illisible : elle a été mise de côté, nouvelle partie', 4000), 400);
 booted = true;

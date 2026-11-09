@@ -77,7 +77,7 @@ export const WORLDS: World[] = [
   { id: 'temple', name: 'Temple', music: 4, bg: ['#FFF1CF', '#E8B864'], accent: '#B9822A', mascot: 'chat' },
 ];
 
-export interface Level { n: number; world: number; index: number; layout: string; /** unique campaign level name */ name?: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number; /** secret level of its world */ secret?: boolean }
+export interface Level { n: number; world: number; index: number; layout: string; /** unique campaign level name */ name?: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number; /** secret level of its world */ secret?: boolean; /** 0 = classic select-two; >0 = top-rack slot count. The only switch for the rule. */ rack: number }
 // Phase 3 (content & variety): every level has its own board, themed by its world (river, onsen, forest, snowy peaks,
 // temple), and no board is shared between worlds. 35 boards: 30 levels + 5 secret levels (one per world).
 // L8 keeps its board+seed (soft-lock repro test).
@@ -109,9 +109,15 @@ export const SEEDS: number[] = [9100003,9295034,9300009,9423769,9595043,9607937,
 export const hintBudget = (world: number) => Math.max(2, 4 - world);
 /** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */
 export const undoBudget = (world: number) => (world === 0 ? -1 : world <= 2 ? 5 : 3);
+/**
+ * Rack slots by world index. Proto: Onsen (1) only, 6 slots. Worlds 3–5 stay classic (0) until the layout rollout,
+ * which fills this table (design: 5, 5, 4) without any other call site growing a special case.
+ */
+export const RACK_BY_WORLD: readonly number[] = [0, 6, 0, 0, 0];
+export const rackSlots = (world: number) => RACK_BY_WORLD[world] ?? 0;
 const mkLevel = (layout: string, w: number, i: number, n: number, name: string): Level => {
   const tiles = LAYOUTS[layout].make().length;
-  return { n, world: w, index: i, layout, name, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: hintBudget(w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w) };
+  return { n, world: w, index: i, layout, name, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: hintBudget(w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w), rack: rackSlots(w) };
 };
 /** The 30-level campaign (n = 0…29). */
 export const LEVELS: Level[] = PLAN.flatMap((ls, w) => ls.map((layout, i) => mkLevel(layout, w, i, w * 6 + i, LEVEL_NAMES[w][i])));

@@ -25,7 +25,8 @@ export const frDate = (k: string) => { const [, m, d] = k.split('-').map(Number)
 /** `min` < 0: use the seed as is (a shared link already carries the final, fair seed). */
 const mk = (layout: string, seed: number, world: number, extra: Partial<PlayLevel> & { mode: Mode; title: string }, min = 0.4): PlayLevel => {
   const pos = LAYOUTS[layout].make(); const tiles = pos.length;
-  return { n: -1, index: 0, world, layout, seed: min < 0 ? seed >>> 0 : fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, undos: 5, legend: 0.1, ...extra };
+  // rack 0: daily, zen and endless stay classic until the rollout sets slots per diff / round (extra.rack overrides).
+  return { n: -1, index: 0, world, layout, seed: min < 0 ? seed >>> 0 : fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, undos: 5, legend: 0.1, rack: 0, ...extra };
 };
 /** Chance that the golden capydindon pair hides in a board (deterministic per seed). Steering 2026-10-30: rarer everywhere
  * (levels 20% → 8%, endless/zen 25% → 10%, daily 100% → 35%). */

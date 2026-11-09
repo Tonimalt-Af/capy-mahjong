@@ -476,3 +476,26 @@ button.wallet{border:0;font:inherit;color:inherit}
 /* level names (steering 2026-10-30): two short lines max under each map node */
 .node .lname{white-space:normal;text-align:center;max-width:118px;line-height:1.15;padding:2px 8px}
 @media (max-height:500px){.node .lname{font-size:11px;max-width:100px}}
+
+/* Rack (plateau du haut). Hidden in classic games. On a tall screen it replaces the pair chip inside the top banner.
+   On a short phone it leaves the banner and sits in a 52px band at the top of the board. */
+#g-rack{display:none;align-items:center;justify-content:center;gap:6px;min-width:0}
+body[data-rack="1"] #g-rack{display:flex}
+body[data-rack="1"] .chips{display:contents}
+body[data-rack="1"] #g-combo{order:3}
+body[data-rack="1"] #g-rack{order:4;flex:1}
+body[data-rack="1"] #g-leg{order:5}
+body[data-rack="1"] #g-time{order:6}
+body[data-rack="1"] #g-score{order:7}
+body[data-rack="1"] #g-pairs{display:none!important}
+.rack-slot{width:46px;height:60px;flex:none;border-radius:8px;background:#fff;box-shadow:-2px 2px 0 var(--side),-3px 3px 0 var(--side2);position:relative}
+.rack-slot.empty{background:#3b241614;box-shadow:inset 0 0 0 2px #3b241628}
+.rack-slot svg{width:100%;height:100%;display:block;border-radius:inherit}
+.rack-slot.hint,.rack-slot.nudge{outline:3px solid var(--gold);outline-offset:2px}
+@media (max-height:500px){
+  body[data-rack="1"] #v-game.active{position:relative}
+  body[data-rack="1"] #v-game .hud{position:static}
+  body[data-rack="1"] #g-rack{position:absolute;top:4px;left:90px;right:100px;height:52px;z-index:6;flex:none}
+  body[data-rack="1"] #g-score{display:none!important}
+  body[data-rack="1"] .rack-slot{width:40px;height:52px}
+}

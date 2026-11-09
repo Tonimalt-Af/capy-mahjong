@@ -14,22 +14,18 @@ test.beforeEach(async ({ page }) => {
 });
 test.afterEach(async ({ page }) => { const p = page as unknown as { errs: string[]; csp: string[] }; expect(p.errs).toEqual([]); expect(p.csp).toEqual([]); });
 
-test('shuffle soft-lock (level 8 repro): stuck stacked tiles get a clear card with a way out; no shuffle is spent', async ({ page }) => {
-  await put(page, { ...BASE, stars: { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 } }); await page.goto('./?level=7');
+test('level 8 former soft-lock clears with the rack and does not spend a shuffle', async ({ page }) => {
+  type R = W & { __game: W['__game'] & { playOut: () => void } };
+  await put(page, { ...BASE, stars: { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 }, seenRack: true }); await page.goto('./?level=7');
   await expect(page.locator('.tile')).toHaveCount(64);
+  await expect(page.locator('.rack-slot')).toHaveCount(6);
   await page.evaluate((ps) => (window as unknown as W).__game.tapPairs(ps), L8);
   expect((await page.evaluate(() => (window as unknown as W).__game.state()))!.left).toBe(4);
-  const card = page.locator('.card.lose'); await expect(card).toBeVisible();
-  await expect(card).toContainText(/Tuiles coincées|Plus de coups/);
-  await expect(page.locator('#n-retry')).toBeVisible(); await expect(page.locator('#n-map')).toBeVisible();
-  const c = await page.evaluate(() => (window as unknown as W).__game.counters()); expect(c).toMatchObject({ shuffles: 0, history: 30, paused: true }); // clock stopped
+  await expect(page.locator('.card.lose')).toHaveCount(0); // the top of the stack can still be parked
+  await page.evaluate(() => (window as unknown as R).__game.playOut());
+  await expect(page.locator('.card.win')).toBeVisible();
+  const c = await page.evaluate(() => (window as unknown as W).__game.counters()); expect(c!.shuffles).toBe(0);
   await expect(page.locator('#g-shuf-n')).toHaveText('3');
-  // undo is still possible (history kept), then the stuck card comes back; Recommencer gives a fresh board
-  await tap(page, '#n-undo'); await expect(page.locator('#ov')).toBeHidden();
-  expect((await page.evaluate(() => (window as unknown as W).__game.counters()))!.paused).toBe(false);
-  await page.evaluate(() => (window as unknown as W).__game.tapPairs([[20, 27]]));
-  await expect(page.locator('.card.lose')).toBeVisible(); await tap(page, '#n-retry');
-  await expect(page.locator('#ov')).toBeHidden(); expect((await page.evaluate(() => (window as unknown as W).__game.state()))!.left).toBe(64);
 });
 test('malformed deep links never crash: home (or map) with a notice', async ({ page }) => {
   await put(page, { ...BASE, stars: {} });

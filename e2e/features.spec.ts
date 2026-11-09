@@ -5,7 +5,7 @@ const G = (p: Page) => ({ state: () => p.evaluate(() => (window as unknown as W)
 const saveOf = (p: Page) => p.evaluate(() => JSON.parse(localStorage.getItem('capy-mahjong-v1')!));
 const tap = async (p: Page, sel: string) => { const l = p.locator(sel); if (test.info().project.name.startsWith('mobile')) await l.tap(); else await l.click(); };
 /** Stars on levels 1–29: every level unlocked (deep links to locked levels open the map instead). */
-const OPEN = { stars: Object.fromEntries(Array.from({ length: 29 }, (_, i) => [i, 1])) };
+const OPEN = { stars: Object.fromEntries(Array.from({ length: 29 }, (_, i) => [i, 1])), seenRack: true };
 const seed = (p: Page, extra: object = {}) => p.addInitScript((e) => { if (!sessionStorage.k) { localStorage.setItem('capy-mahjong-v1', JSON.stringify({ stars: {}, best: {}, settings: { sfx: false, music: false, dim: true, vibrate: false }, seenHowTo: true, ...e })); sessionStorage.k = '1'; } }, extra);
 
 test.beforeEach(async ({ page }) => { const errs: string[] = []; page.on('pageerror', (e) => errs.push(e.message)); (page as unknown as { errs: string[] }).errs = errs; });
@@ -41,6 +41,22 @@ test('zen: no timer/score, unlimited hints & shuffles', async ({ page }) => {
   await expect(page.locator('#g-hint')).toBeEnabled();
   await G(page).solve(); await expect(page.locator('.card.win')).toContainText('Plateau vidé'); await expect(page.locator('.card.win .bigstars')).toHaveCount(0);
   expect((await saveOf(page)).stats.zenWon).toBe(1);
+});
+test('a full rack with no matching tile shows the stuck card and does not spend a shuffle', async ({ page }) => {
+  type R = { __game: { forceRackStuck: () => void; counters: () => { shuffles: number } | null } };
+  await seed(page, OPEN); await page.goto('/?level=6');
+  await page.evaluate(() => (window as unknown as R).__game.forceRackStuck());
+  const card = page.locator('.card.lose'); await expect(card).toBeVisible();
+  await expect(card).toContainText('plateau du haut');
+  await expect(page.locator('#n-retry')).toBeVisible(); await expect(page.locator('#n-map')).toBeVisible();
+  expect((await page.evaluate(() => (window as unknown as R).__game.counters()))!.shuffles).toBe(0);
+});
+test('world 2 has a 6-slot rack; world 1, the daily and easy zen stay classic', async ({ page }) => {
+  await seed(page, OPEN);
+  await page.goto('/?level=0'); await expect(page.locator('#g-rack')).toBeHidden(); await expect(page.locator('#g-pairs')).toBeVisible();
+  await page.goto('/?level=6'); await expect(page.locator('.rack-slot')).toHaveCount(6); await expect(page.locator('#g-pairs')).toBeHidden();
+  await page.goto('/?mode=daily'); await expect(page.locator('#g-rack')).toBeHidden(); await expect(page.locator('#g-pairs')).toBeVisible();
+  await page.goto('/?mode=zen&diff=facile&seed=2'); await expect(page.locator('#g-rack')).toBeHidden();
 });
 test('combo indicator lives in the HUD, never over the board', async ({ page }) => {
   await seed(page, OPEN); await page.goto('/?level=6'); await G(page).pairs(4);
@@ -224,8 +240,15 @@ test('game HUD music button: big enough, never over the board or other HUD items
     const m = await box(page, '#g-music'); expect(m.width).toBeGreaterThanOrEqual(44); expect(m.height).toBeGreaterThanOrEqual(44);
     await expect(page.locator('#g-music')).toBeInViewport({ ratio: 1 });
     expect(overlaps(m, await box(page, '#stage'))).toBe(false);
-    for (const sel of ['#g-pause', '#g-lvl', '#g-combo', '#g-pairs', '#g-time', '#g-score', '.bar']) expect(overlaps(m, await box(page, sel)), sel).toBe(false);
-    await expect(page.locator('#g-score')).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('#g-rack')).toBeVisible();
+    await expect(page.locator('.rack-slot')).toHaveCount(6);
+    await expect(page.locator('#g-pairs')).toBeHidden();
+    const sels = ['#g-pause', '#g-lvl', '#g-combo', '#g-time', '#g-rack', '.bar'];
+    if (vp.height > 500) sels.push('#g-score');
+    for (const sel of sels) expect(overlaps(m, await box(page, sel)), `${vp.width}x${vp.height} ${sel}`).toBe(false);
+    if (vp.height > 500) await expect(page.locator('#g-score')).toBeInViewport({ ratio: 1 });
+    else await expect(page.locator('#g-time')).toBeInViewport({ ratio: 1 });
+    expect(overlaps(await box(page, '#g-rack'), await box(page, '.bar'))).toBe(false);
   }
 });
 test('music button: one tap mutes / unmutes music, keeps the chosen volume, persists and stays in sync with settings', async ({ page }) => {
