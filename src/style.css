@@ -178,7 +178,9 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
   .bar{gap:10px;padding:0 10px 6px 2px}.bar .btn{min-width:72px;padding:4px 8px;font-size:13px}
   .card{padding:12px 20px 14px}.card h2{font-size:24px}.capy-s{width:70px}.capy-s.win{width:76px}.bigstars .star{width:44px;height:44px}.bigstars .s1{width:54px;height:54px}
   .maphead{padding:6px 10px}.path{height:72vh}.worldcard{padding:8px}.wc-art{width:58%}
-  .how{gap:8px}.hstep{padding:6px}.hstep p{font-size:12.5px}
+  .card.howto{padding:8px 12px 10px}.card.howto h2{font-size:20px;margin:0 0 4px}
+  .how{grid-template-columns:1fr 1fr;gap:6px;margin:2px 0 4px}.hstep{padding:4px 6px}.hstep p{font-size:12px;margin:2px 0 0;line-height:1.2}
+  .hart{height:40px}.ht-tile{width:30px;height:40px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 .rot-art{width:260px;height:200px}.rot-art svg{width:150px;left:0;top:20px}

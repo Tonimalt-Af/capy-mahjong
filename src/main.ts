@@ -631,6 +631,8 @@ function doShuffle() {
 }
 $('g-hint').onclick = doHint; $('g-undo').onclick = doUndo; $('g-shuf').onclick = doShuffle; $('g-pause').onclick = () => pause();
 addEventListener('keydown', (e) => {
+  // Home and menus have no game shortcut handler. Escape still dismisses the open card.
+  if (e.key === 'Escape' && (view !== 'game' || !g)) { if ($('ov').classList.contains('show')) closeOv(); return; }
   if (view !== 'game' || !g) return;
   const ovOpen = $('ov').classList.contains('show');
   if (e.key === 'Escape') { if (!ovOpen) pause(); else if ($('card').classList.contains('pause')) resume(); return; }
@@ -791,11 +793,12 @@ function saveCode(back: () => void) {
 function howTo(then?: () => void) {
   const tile = (k: string, cls = '') => `<div class="ht-tile ${cls}"><svg viewBox="0 0 100 130"><use href="#k-${k}"/></svg></div>`;
   const rackCard = unlocked(S, 6) || (!!g && (g.level.rack ?? 0) > 0);
+  // Worlds 3–5 are still classic. The card names Onsen only, until those worlds take the rack (design §5).
   openOv(`<h2>Comment jouer</h2><div class="how">
    <div class="hstep"><div class="hart">${tile('fraise-3')}${tile('fraise-3')}</div><p>Touche deux tuiles identiques pour les retirer.</p></div>
    <div class="hstep"><div class="hart">${tile('agrume-1', 'blk')}${tile('canard')}${tile('agrume-2', 'blk')}</div><p>Une tuile est libre si rien n'est dessus et si son côté gauche ou droit est dégagé.</p></div>
    <div class="hstep"><div class="hart">${tile('printemps')}${tile('hiver')}</div><p>Les saisons vont ensemble, les fleurs aussi. Vide le plateau pour gagner !</p></div>
-   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>En dehors de la Rivière, une tuile libre monte dans le plateau du haut. Touche sa paire pour les retirer. Un plateau du haut plein, sans paire possible, bloque la partie.</p></div>` : ''}</div>
+   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>À l'Onsen, une tuile libre monte dans le plateau du haut. Touche sa paire pour les retirer. Un plateau du haut plein, sans paire possible, bloque la partie.</p></div>` : ''}</div>
    <div class="row"><button class="btn primary" id="ht-ok">${then ? 'C\'est parti !' : 'Compris'}</button></div>`, 'howto');
   $('ht-ok').onclick = () => { S.seenHowTo = true; persist(); closeOv(); then?.(); };
 }

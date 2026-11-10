@@ -11,6 +11,14 @@ const seed = (p: Page, extra: object = {}) => p.addInitScript((e) => { if (!sess
 test.beforeEach(async ({ page }) => { const errs: string[] = []; page.on('pageerror', (e) => errs.push(e.message)); (page as unknown as { errs: string[] }).errs = errs; });
 test.afterEach(async ({ page }) => { expect((page as unknown as { errs: string[] }).errs).toEqual([]); });
 
+test('help card limits the rack to Onsen, and Escape closes it', async ({ page }) => {
+  await seed(page, OPEN); await page.goto('/');
+  await tap(page, '#h-help');
+  await expect(page.locator('.howto')).toContainText('À l\'Onsen');
+  await expect(page.locator('.howto')).not.toContainText('En dehors de la Rivière');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#ov')).not.toHaveClass(/show/);
+});
 test('modes screen lists daily, endless and zen; daily dot on home', async ({ page }) => {
   await seed(page); await page.goto('/');
   await expect(page.locator('#h-modes .dot')).toBeVisible();
