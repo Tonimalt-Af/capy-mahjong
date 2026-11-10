@@ -83,7 +83,7 @@ app.innerHTML = `
   <header class="hud"><div class="hbtns"><button class="iconbtn" id="g-pause" aria-label="Pause">${ic('pause')}</button>${musicBtn('g-music')}</div><div class="lvl" id="g-lvl"></div>
     <div class="rack" id="g-rack" role="list" aria-label="Plateau du haut"></div>
     <div class="chips"><span class="chip combo" id="g-combo"></span><span class="chip leg" id="g-leg" role="status"></span><span class="chip" id="g-pairs"></span><span class="chip" id="g-time">0:00</span><span class="chip" id="g-score">0</span></div></header>
-  <main class="stage" id="stage"><div class="board" id="board"></div></main>
+  <main class="stage" id="stage"><div class="mat" id="mat" hidden></div><div class="side-art" id="side-l" hidden></div><div class="side-art" id="side-r" hidden></div><div class="board" id="board"></div></main>
   <nav class="bar">
     <button class="btn" id="g-hint">${ic('hint')}<span>Indice</span><b class="badge" id="g-hint-n"></b></button>
     <button class="btn" id="g-undo">${ic('undo')}<span>Annuler</span><b class="badge" id="g-undo-n"></b></button>
@@ -396,6 +396,33 @@ function tick() {
 /** Board scale from the stage's CURRENT box (never cached): same stage size → same tile size, whatever happened before. */
 /** Phone landscape keeps the rack as a band inside the board area. Desktop keeps it in the top banner. */
 function rackBand() { return g && (g.level.rack ?? 0) > 0 && matchMedia('(max-height: 500px)').matches ? RACK_BAND : 0; }
+const MAX_U = 42; // 83px tiles: readable on a large screen, not a poster
+const mat = document.getElementById('mat') as HTMLElement;
+const sideL = document.getElementById('side-l') as HTMLElement;
+const sideR = document.getElementById('side-r') as HTMLElement;
+/** On a wide stage, frame the board and park a mascot in each margin so a narrow layout doesn't float in a void. */
+function placeStage(W: number, fullH: number, band: number, ox: number, oy: number, boardW: number, boardH: number, shift: number) {
+  const wide = W >= 860 && fullH >= 540 && ox > 48;
+  if (wide) {
+    const padX = Math.min(40, ox);
+    const padY = Math.min(36, oy);
+    mat.hidden = false;
+    mat.style.top = `${band + oy + 2 - padY}px`;
+    mat.style.left = `${ox + 2 - padX}px`;
+    mat.style.width = `${boardW + shift + padX * 2}px`;
+    mat.style.height = `${boardH + shift + padY * 2}px`;
+  } else mat.hidden = true;
+  const world = g?.level.world ?? 0;
+  const mascot = WORLDS[world]?.mascot ?? 'agrume';
+  if (wide && ox > 140) {
+    if (sideL.dataset.m !== mascot) { sideL.innerHTML = capySvg(mascot); sideR.innerHTML = capySvg(mascot); sideL.dataset.m = mascot; }
+    const art = Math.min(150, ox - 28);
+    sideL.hidden = false; sideR.hidden = false;
+    sideL.style.width = sideR.style.width = `${art}px`;
+    sideL.style.left = `${Math.max(12, ox / 2 - art / 2)}px`;
+    sideR.style.right = `${Math.max(12, ox / 2 - art / 2)}px`;
+  } else { sideL.hidden = true; sideR.hidden = true; }
+}
 function layout() {
   if (!g) return; const box = stage.getBoundingClientRect(); const W = Math.round(box.width), fullH = Math.round(box.height);
   const band = rackBand(); const H = fullH - band; if (W < 50 || H < 50) return;
@@ -406,12 +433,19 @@ function layout() {
   let shift = zMax * depth;
   // The top layer is drawn up-left of its cell. Pull the scale in if that offset would leave the stage.
   if (cols * u + shift + 8 > W) { u = Math.floor(((W - shift - 8) / cols) * 4) / 4; depth = Math.max(2, u * 0.24); shift = zMax * depth; }
+  if (u > MAX_U) { u = MAX_U; depth = Math.max(2, u * 0.24); shift = zMax * depth; }
+  const boardW = cols * u;
   const boardH = rows * u * ar;
-  board.style.setProperty('--u', `${u * 2}px`); board.style.width = `${cols * u}px`; board.style.height = `${boardH}px`;
-  // Anchor so the highest tile sits just under the rack (or the top of the stage), not through it.
-  board.style.top = `${band + shift + boardH / 2 + 2}px`;
-  board.style.left = `${cols * u / 2 + shift + 2}px`;
+  const slackX = W - boardW - shift - 8;
+  const slackY = H - boardH - shift - 8;
+  const ox = Math.max(0, slackX / 2);
+  const oy = Math.max(0, slackY / 2);
+  board.style.setProperty('--u', `${u * 2}px`); board.style.width = `${boardW}px`; board.style.height = `${boardH}px`;
+  // Phone: the highest tile sits just under the rack. Wide screens: the same stack is centered, with the spare space shared.
+  board.style.top = `${band + oy + shift + boardH / 2 + 2}px`;
+  board.style.left = `${ox + boardW / 2 + shift + 2}px`;
   board.style.transform = 'translate(-50%, -50%)';
+  placeStage(W, fullH, band, ox, oy, boardW, boardH, shift);
   for (const t of g.tiles) {
     const d = g.els[t.id];
     d.style.left = `${(t.x - x0) * u - t.z * depth}px`; d.style.top = `${(t.y - y0) * u * ar - t.z * depth}px`;

@@ -108,7 +108,10 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
 .stage{position:relative;min-height:0;min-width:0;grid-column:1;grid-row:2}
 .bar{grid-column:2;grid-row:2;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:0 14px 10px 4px}
 .bar .btn{flex-direction:column;gap:2px;padding:8px 10px;min-width:84px;font-size:14px}
-.board{position:absolute;left:50%;top:50%}
+.board{position:absolute;left:50%;top:50%;z-index:1}
+.mat{position:absolute;z-index:0;border-radius:36px;pointer-events:none;background:#fff8eeaa;box-shadow:inset 0 0 0 2px #3b2a2014, 0 16px 40px #3b2a2012}
+.side-art{position:absolute;bottom:16px;z-index:0;pointer-events:none;opacity:.92}
+.side-art svg{width:100%;height:auto;display:block;filter:drop-shadow(0 8px 0 #3b2a2014)}
 .tile{position:absolute;border-radius:calc(var(--u)*.16);cursor:pointer;transition:transform .14s cubic-bezier(.3,1.6,.6,1),opacity .3s,filter .2s,translate .3s;
   box-shadow:calc(var(--d)*-1) var(--d) 0 var(--side),calc(var(--d)*-1.7) calc(var(--d)*1.7) 0 var(--side2),calc(var(--d)*-1.5) calc(var(--d)*2.6) calc(var(--d)*2.5) #3b241640}
 .tile svg{width:100%;height:100%;display:block;border-radius:inherit}

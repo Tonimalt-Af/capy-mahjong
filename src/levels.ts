@@ -1,5 +1,6 @@
-import { stack, type Pos } from './layout';
+import type { Pos } from './layout';
 import { BOARDS } from './boards';
+import { silhouette } from './silhouettes';
 
 const rect = (out: Pos[], x0: number, y0: number, cols: number, rows: number, z: number) => {
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) out.push({ x: x0 + i * 2, y: y0 + j * 2, z });
@@ -11,20 +12,20 @@ export const LAYOUTS: Record<string, LayoutDef> = {
   galet: { id: 'galet', name: 'Galet', make: () => build([0, 0, 6, 4, 0], [2, 2, 4, 2, 1], [4, 2, 2, 2, 2]) }, // 36
   pont: { id: 'pont', name: 'Pont', make: () => build([0, 0, 10, 3, 0], [2, 0, 8, 1, 1], [2, 4, 8, 1, 1], [8, 2, 2, 1, 1]) }, // 48
   pyramide: { id: 'pyramide', name: 'Pyramide', make: () => build([0, 0, 8, 5, 0], [2, 2, 6, 3, 1], [4, 4, 4, 1, 2], [6, 4, 2, 1, 3]) }, // 64
-  fleur: { id: 'fleur', name: 'Fleur', shape: true, make: () => stack([[9, 4], [9, 4]]) }, // 72
-  papillon: { id: 'papillon', name: 'Papillon', shape: true, make: () => stack([[7, 4], [5, 4], [5, 4]]) }, // 68
-  forteresse: { id: 'forteresse', name: 'Forteresse', shape: true, make: () => stack([[10, 4], [8, 4], [6, 4]]) }, // 96
-  montagne: { id: 'montagne', name: 'Montagne', shape: true, make: () => stack([[10, 5], [8, 5], [6, 5]]) }, // 120
-  tortue: { id: 'tortue', name: 'Tortue', shape: true, make: () => stack([[10, 5], [10, 5], [8, 5], [4, 1]]) }, // 144
-  coeur: { id: 'coeur', name: 'Cœur', shape: true, make: () => stack([[10, 3], [8, 3], [8, 3]]) }, // 78
-  capy: { id: 'capy', name: 'Capybara', shape: true, make: () => stack([[10, 4], [10, 4], [8, 4]]) }, // 112
-  chat: { id: 'chat', name: 'Chat', shape: true, make: () => stack([[9, 5], [9, 5]]) }, // 90
-  ours: { id: 'ours', name: 'Ourson', shape: true, make: () => stack([[10, 5], [6, 3], [6, 3]]) }, // 86
-  etoile: { id: 'etoile', name: 'Étoile', shape: true, make: () => stack([[8, 5], [8, 3], [6, 3]]) }, // 82
-  champignon: { id: 'champignon', name: 'Champignon', shape: true, make: () => stack([[10, 5], [8, 5]]) }, // 90
-  carotte: { id: 'carotte', name: 'Carotte', shape: true, make: () => stack([[9, 4], [5, 2]]) }, // 46
-  yuzu: { id: 'yuzu', name: 'Yuzu', shape: true, make: () => stack([[9, 5], [7, 3]]) }, // 66
-  nuage: { id: 'nuage', name: 'Nuage', shape: true, make: () => stack([[9, 4], [9, 2], [9, 2], [7, 2]]) }, // 86
+  fleur: { id: 'fleur', name: 'Fleur', shape: true, make: () => silhouette('fleur') }, // 72
+  papillon: { id: 'papillon', name: 'Papillon', shape: true, make: () => silhouette('papillon') }, // 68
+  forteresse: { id: 'forteresse', name: 'Forteresse', shape: true, make: () => silhouette('forteresse') }, // 96
+  montagne: { id: 'montagne', name: 'Montagne', shape: true, make: () => silhouette('montagne') }, // 120
+  tortue: { id: 'tortue', name: 'Tortue', shape: true, make: () => silhouette('tortue') }, // 144
+  coeur: { id: 'coeur', name: 'Cœur', shape: true, make: () => silhouette('coeur') }, // 78
+  capy: { id: 'capy', name: 'Capybara', shape: true, make: () => silhouette('capy') }, // 112
+  chat: { id: 'chat', name: 'Chat', shape: true, make: () => silhouette('chat') }, // 90
+  ours: { id: 'ours', name: 'Ourson', shape: true, make: () => silhouette('ours') }, // 86
+  etoile: { id: 'etoile', name: 'Étoile', shape: true, make: () => silhouette('etoile') }, // 82
+  champignon: { id: 'champignon', name: 'Champignon', shape: true, make: () => silhouette('champignon') }, // 90
+  carotte: { id: 'carotte', name: 'Carotte', shape: true, make: () => silhouette('carotte') }, // 46
+  yuzu: { id: 'yuzu', name: 'Yuzu', shape: true, make: () => silhouette('yuzu') }, // 66
+  nuage: { id: 'nuage', name: 'Nuage', shape: true, make: () => silhouette('nuage') }, // 86
   ...BOARDS,
 };
 
@@ -64,7 +65,7 @@ export const SECRET_STARS = 15;
 // Audit 2026-10-30: all levels re-seeded with the smart-bot simulation (src/sim.ts, random shuffles, 8% capydindon) for a
 // smooth curve: bot clear rate ≈ 98% (L1) → ≈ 82% (L30), no spikes (L8 kept: soft-lock repro). Phase 3: re-seeded for the new
 // boards (L11 and L15 hide a capydindon); seeds 31–35 are the secret levels, each as hard as its world's last level.
-export const SEEDS: number[] = [9100003,9295034,9300009,9423769,9595043,9607937,9707940,70859,9923784,10079220,10187142,10936503,8,26,10816805,21769291,9,4,10947571,6,3,11239661,1,12,1,11607997,5,6,60,3,12108012,12223853,2,12400102,3];
+export const SEEDS: number[] = [30021,1017146,1974120,2955763,3918219,4891639,5859577,70859,7150570,8799024,9736811,10715713,11689133,12657071,13677088,14590206,15604741,1217152,17504984,18552411,1227622,8361329,4225532,4354883,1630295,24302478,4831756,7339444,27258371,2253553,29161355,30121070,1927324,32240593,33183862];
 /** Hints per level: 4 / 3 / 2 in the first worlds, and 2 (not 1) on the big boards of worlds 4–5. */
 export const hintBudget = (world: number) => Math.max(2, 4 - world);
 /** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */
