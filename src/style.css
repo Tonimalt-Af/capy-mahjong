@@ -496,8 +496,9 @@ button.wallet{border:0;font:inherit;color:inherit}
 .node .lname{white-space:normal;text-align:center;max-width:118px;line-height:1.15;padding:2px 8px}
 @media (max-height:500px){.node .lname{font-size:11px;max-width:100px}}
 
-/* Rack (plateau du haut). Hidden in classic games. On a tall screen it replaces the pair chip inside the top banner.
-   On a short phone it leaves the banner and sits in a 52px band at the top of the board. */
+/* Rack (plateau du haut). Hidden in classic games.
+   Phone landscape (≤500px tall): a 52px band across the board, 40×52 slots.
+   Taller screens: the band stays on the stage, centered on the board, and the slots scale up to the tiles. */
 #g-rack{display:none;align-items:center;justify-content:center;gap:6px;min-width:0}
 body[data-rack="1"] #g-rack{display:flex}
 body[data-rack="1"] .chips{display:contents}
@@ -518,4 +519,17 @@ body[data-rack="1"] #g-pairs{display:none!important}
   body[data-rack="1"] #g-rack{position:absolute;top:0;left:88px;right:92px;height:52px;z-index:6;flex:none}
   body[data-rack="1"] #g-score{display:none!important}
   body[data-rack="1"] .rack-slot{width:40px;height:52px}
+}
+@media (min-height:501px){
+  /* Chips return to a group on the right. The rack is no longer between them, so it must not swallow the free space. */
+  body[data-rack="1"] .chips{display:flex;margin-left:auto}
+  body[data-rack="1"] #g-rack{
+    position:absolute;z-index:6;flex:none;order:0;pointer-events:none;
+    gap:8px;padding:6px 8px 10px;box-sizing:border-box;
+  }
+  body[data-rack="1"] .rack-slot{
+    width:var(--slot-w,72px);height:var(--slot-h,94px);
+    border-radius:calc(var(--slot-w,72px) * .16);pointer-events:auto;
+  }
+  body[data-rack="1"] .rack-slot:not(.empty){box-shadow:-3px 3px 0 var(--side),-5px 5px 0 var(--side2)}
 }

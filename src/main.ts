@@ -2,7 +2,7 @@ import '@fontsource/fredoka/latin-400.css'; import '@fontsource/fredoka/latin-60
 import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
 import { deal, isFree, matches, findHint, freeTiles, reshuffle, clearable, type Tile } from './engine';
-import { fitUnit, RACK_BAND } from './fit';
+import { boardScale, rackSlotSize, RACK_BAND } from './fit';
 import { applyRackTap, boardTiles, hasRackMove, rackBoardDead, rackHint, rackShufflePossible, rackWon, reshuffleRack, slotLabel, undoRack, type RackAction } from './rack';
 import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
 import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, runMatchesRules, KEY, CORRUPT_KEY, type Run } from './storage';
@@ -81,8 +81,8 @@ app.innerHTML = `
 <section class="view" id="v-coll"></section>
 <section class="view" id="v-game">
   <header class="hud"><div class="hbtns"><button class="iconbtn" id="g-pause" aria-label="Pause">${ic('pause')}</button>${musicBtn('g-music')}</div><div class="lvl" id="g-lvl"></div>
-    <div class="rack" id="g-rack" role="list" aria-label="Plateau du haut"></div>
     <div class="chips"><span class="chip combo" id="g-combo"></span><span class="chip leg" id="g-leg" role="status"></span><span class="chip" id="g-pairs"></span><span class="chip" id="g-time">0:00</span><span class="chip" id="g-score">0</span></div></header>
+  <div class="rack" id="g-rack" role="list" aria-label="Plateau du haut"></div>
   <main class="stage" id="stage"><div class="mat" id="mat" hidden></div><div class="side-art" id="side-l" hidden></div><div class="side-art" id="side-r" hidden></div><div class="board" id="board"></div></main>
   <nav class="bar">
     <button class="btn" id="g-hint">${ic('hint')}<span>Indice</span><b class="badge" id="g-hint-n"></b></button>
@@ -394,9 +394,35 @@ function tick() {
 }
 
 /** Board scale from the stage's CURRENT box (never cached): same stage size → same tile size, whatever happened before. */
-/** Phone landscape keeps the rack as a band inside the board area. Desktop keeps it in the top banner. */
-function rackBand() { return g && (g.level.rack ?? 0) > 0 && matchMedia('(max-height: 500px)').matches ? RACK_BAND : 0; }
-const MAX_U = 42; // 83px tiles: readable on a large screen, not a poster
+const phoneRack = () => matchMedia('(max-height: 500px)').matches;
+/**
+ * Phone landscape: the stylesheet pins a 52px band (40×52 slots).
+ * Taller screens: the same band, but the slots grow to the board tiles and the row is centered on the stage.
+ * Returns the px the board must stay below.
+ */
+function placeRack(): number {
+  const rack = $('g-rack');
+  const clear = () => { for (const p of ['left', 'width', 'top', 'height', '--slot-w', '--slot-h']) rack.style.removeProperty(p); };
+  if (!g || (g.level.rack ?? 0) <= 0 || phoneRack()) { clear(); return g && (g.level.rack ?? 0) > 0 && phoneRack() ? RACK_BAND : 0; }
+  const st = stage.getBoundingClientRect();
+  if (st.width < 50 || st.height < 50) { clear(); return 0; }
+  const cs = getComputedStyle(rack);
+  const rowPad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const insetX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  const gap = parseFloat(cs.columnGap) || 0;
+  const zMax = Math.max(...g.tiles.map((t) => t.z));
+  const slot = rackSlotSize(g.level.rack, Math.round(st.width), Math.round(st.height), g.bounds.cols, g.bounds.rows, zMax, rowPad, gap, insetX);
+  rack.style.setProperty('--slot-w', `${slot.w}px`);
+  rack.style.setProperty('--slot-h', `${slot.h}px`);
+  const view = $('v-game').getBoundingClientRect();
+  const host = getComputedStyle($('v-game'));
+  rack.style.left = `${st.left - view.left - (parseFloat(host.paddingLeft) || 0)}px`;
+  rack.style.top = `${st.top - view.top - (parseFloat(host.paddingTop) || 0)}px`;
+  rack.style.width = `${st.width}px`;
+  const band = slot.h + rowPad;
+  rack.style.height = `${band}px`;
+  return band;
+}
 const mat = document.getElementById('mat') as HTMLElement;
 const sideL = document.getElementById('side-l') as HTMLElement;
 const sideR = document.getElementById('side-r') as HTMLElement;
@@ -424,16 +450,15 @@ function placeStage(W: number, fullH: number, band: number, ox: number, oy: numb
   } else { sideL.hidden = true; sideR.hidden = true; }
 }
 function layout() {
-  if (!g) return; const box = stage.getBoundingClientRect(); const W = Math.round(box.width), fullH = Math.round(box.height);
-  const band = rackBand(); const H = fullH - band; if (W < 50 || H < 50) return;
+  if (!g) return;
+  const band = placeRack();
+  const box = stage.getBoundingClientRect(); const W = Math.round(box.width), fullH = Math.round(box.height);
+  const H = fullH - band; if (W < 50 || H < 50) return;
   const { cols, rows, x0, y0 } = g.bounds; const ar = 1.3;
   const zMax = Math.max(...g.tiles.map((t) => t.z));
-  let u = fitUnit(cols, rows, zMax, W, H);
-  let depth = Math.max(2, u * 0.24);
-  let shift = zMax * depth;
-  // The top layer is drawn up-left of its cell. Pull the scale in if that offset would leave the stage.
-  if (cols * u + shift + 8 > W) { u = Math.floor(((W - shift - 8) / cols) * 4) / 4; depth = Math.max(2, u * 0.24); shift = zMax * depth; }
-  if (u > MAX_U) { u = MAX_U; depth = Math.max(2, u * 0.24); shift = zMax * depth; }
+  // The top layer is drawn up-left of its cell. boardScale pulls the scale in if that offset would leave the stage.
+  const scaled = boardScale(cols, rows, zMax, W, H);
+  const u = scaled.u, depth = scaled.depth, shift = scaled.shift;
   const boardW = cols * u;
   const boardH = rows * u * ar;
   const slackX = W - boardW - shift - 8;
@@ -441,7 +466,7 @@ function layout() {
   const ox = Math.max(0, slackX / 2);
   const oy = Math.max(0, slackY / 2);
   board.style.setProperty('--u', `${u * 2}px`); board.style.width = `${boardW}px`; board.style.height = `${boardH}px`;
-  // Phone: the highest tile sits just under the rack. Wide screens: the same stack is centered, with the spare space shared.
+  // Centered in the space under the rack band. The band is 0 when the level has no rack.
   board.style.top = `${band + oy + shift + boardH / 2 + 2}px`;
   board.style.left = `${ox + boardW / 2 + shift + 2}px`;
   board.style.transform = 'translate(-50%, -50%)';
