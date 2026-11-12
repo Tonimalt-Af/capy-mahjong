@@ -65,17 +65,124 @@ export function assignSolvable(positions: Pos[], pairs: [string, string][], r: (
   throw new Error('could not build deal');
 }
 
-export function deal(positions: Pos[], seed: number, legendChance = 0) {
+function columnsOf(positions: Pos[]): Pos[][] {
+  const m = new Map<string, Pos[]>();
+  for (const p of positions) { const k = `${p.x},${p.y}`; (m.get(k) ?? m.set(k, []).get(k)!).push(p); }
+  for (const c of m.values()) c.sort((a, b) => a.z - b.z);
+  return [...m.values()];
+}
+
+/** How many whole groups to hide in a column. A smaller rack hides more, so the slack shrinks. */
+export const buryCount = (slots: number) => (slots >= 6 ? 3 : slots === 5 ? 3 : 4);
+
+function tryBury(positions: Pos[], pairs: [string, string][], r: () => number, want: number) {
+  const pool = shuffleArr(columnsOf(positions).filter((c) => c.length >= 4), r);
+  const used = new Set<Pos>();
+  const kind = new Map<Pos, string>();
+  const locked = new Set<string>();
+  const regular = shuffleArr(KINDS.filter((k) => !k.bonus && !k.legend).map((k) => k.id), r);
+  let ki = 0;
+  for (const c of pool) {
+    if (locked.size >= want) break;
+    const top = c.slice(-4);
+    if (top.some((p) => used.has(p))) continue;
+    const zs = top.map((p) => p.z).sort((a, b) => a - b);
+    if (zs[3] - zs[0] !== 3) continue;
+    const id = regular[ki++]; if (!id) break;
+    for (const p of top) { kind.set(p, id); used.add(p); }
+    locked.add(id);
+  }
+  if (locked.size < 1) return null;
+  const rest = positions.filter((p) => !used.has(p));
+  const remain = pairs.filter(([a, b]) => !locked.has(a) && !locked.has(b));
+  if (remain.length * 2 !== rest.length) return null;
+  let restDeal: { kind: Map<Pos, string> };
+  try { restDeal = assignSolvable(rest, remain, r, 40); } catch { return null; }
+  for (const [p, id] of restDeal.kind) kind.set(p, id);
+  return { kind, locked, forced: locked.size * 2 };
+}
+
+function assignBuried(positions: Pos[], pairs: [string, string][], r: () => number, want: number, slots: number) {
+  for (let n = want; n >= 1; n--) for (let k = 0; k < 8; k++) {
+    const got = tryBury(positions, pairs, r, n);
+    if (!got) continue;
+    const tiles: Tile[] = positions.map((p, i) => ({ ...p, id: i, kind: got.kind.get(p)!, removed: false }));
+    const play = playRack(tiles, slots);
+    if (play.win && play.peak <= slots) return got;
+  }
+  return null;
+}
+
+export interface Deal {
+  tiles: Tile[];
+  /** Classic removal order when the deal is classically solvable; otherwise the pairs in kind order. */
+  solution: [number, number][];
+  /** A whole group sits in one column, so classic play cannot finish. */
+  needsRack: boolean;
+  /** Parks whose mate is still buried. 0 when classic play can finish. */
+  forced: number;
+  peak: number;
+}
+
+/**
+ * `slots` 0 is the classic solvable deal. With `bury`, whole groups are stacked in one column
+ * so they can only be cleared by parking tiles. The geometry itself stays classically clearable.
+ */
+export function deal(positions: Pos[], seed: number, legendChance = 0, slots = 0, bury = false): Deal {
   const r = rng(seed);
   const all = shuffleArr(deckPairs(144), r).slice(0, positions.length / 2);
-  const { kind, order } = assignSolvable(positions, all, r);
+  const buried = slots > 0 && bury ? assignBuried(positions, all, r, buryCount(slots), slots) : null;
+  const classic = buried ? null : assignSolvable(positions, all, r);
+  const kind = buried?.kind ?? classic!.kind;
   const tiles: Tile[] = positions.map((p, i) => ({ ...p, id: i, kind: kind.get(p)!, removed: false }));
   const idx = new Map(positions.map((p, i) => [p, i]));
-  const solution = order.map(([a, b]) => [idx.get(a)!, idx.get(b)!] as [number, number]);
-  // rare golden capydindon: relabel one solution pair from the back half (buried deeper) — solvability unchanged
+  const pairs: [number, number][] = buried ? pairsFromKind(tiles) : classic!.order.map(([a, b]) => [idx.get(a)!, idx.get(b)!] as [number, number]);
   const lr = rng(seed ^ 0x9e3779b9);
-  if (legendChance > 0 && lr() < legendChance && solution.length > 4) { const [a, b] = solution[Math.floor(solution.length / 2 + lr() * (solution.length / 2 - 1))]; tiles[a].kind = tiles[b].kind = 'capydindon'; }
-  return { tiles, solution };
+  if (legendChance > 0 && lr() < legendChance && pairs.length > 4) {
+    const open = pairs.filter(([a]) => !buried?.locked.has(tiles[a].kind));
+    if (open.length) {
+      const [a, b] = open[Math.floor(lr() * open.length)];
+      const prevA = tiles[a].kind, prevB = tiles[b].kind;
+      tiles[a].kind = tiles[b].kind = 'capydindon';
+      if (buried && !playRack(tiles, slots).win) { tiles[a].kind = prevA; tiles[b].kind = prevB; }
+    }
+  }
+  return { tiles, solution: pairs, needsRack: !!buried, forced: buried?.forced ?? 0, peak: buried ? 1 : 0 };
+}
+
+function pairsFromKind(tiles: Tile[]): [number, number][] {
+  const by = new Map<string, number[]>();
+  for (const t of tiles) { const g = KIND_BY_ID.get(t.kind)!.group; (by.get(g) ?? by.set(g, []).get(g)!).push(t.id); }
+  const out: [number, number][] = [];
+  for (const ids of by.values()) {
+    ids.sort((a, b) => tiles[b].z - tiles[a].z || tiles[a].x - tiles[b].x || tiles[a].y - tiles[b].y);
+    for (let i = 0; i + 1 < ids.length; i += 2) out.push([ids[i], ids[i + 1]]);
+  }
+  return out;
+}
+
+/** Hint-style rack play: match the rack, else a free pair, else park the tile whose mate is underneath. */
+export function playRack(tiles: Tile[], slots: number): { win: boolean; peak: number; forced: number } {
+  const rack: number[] = [];
+  let peak = 0, forced = 0;
+  const live = tiles.map((t) => ({ ...t }));
+  for (let step = 0; step < tiles.length * 3; step++) {
+    if (live.every((t) => t.removed)) return { win: true, peak, forced };
+    const held = new Set(rack);
+    const board = live.filter((t) => !t.removed && !held.has(t.id));
+    const free = freeTiles(board);
+    const mate = (kind: string) => rack.find((id) => matches(live[id].kind, kind));
+    const hit = free.find((f) => mate(f.kind) !== undefined);
+    if (hit) { const id = mate(hit.kind)!; hit.removed = true; live[id].removed = true; rack.splice(rack.indexOf(id), 1); continue; }
+    let pair: [Tile, Tile] | null = null;
+    for (let i = 0; i < free.length && !pair; i++) for (let j = i + 1; j < free.length; j++) if (matches(free[i].kind, free[j].kind)) pair = [free[i], free[j]];
+    if (pair && rack.length < slots) { rack.push(pair[0].id); peak = Math.max(peak, rack.length); continue; }
+    if (!free.length || rack.length >= slots) return { win: false, peak, forced };
+    const pick = free.find((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)))
+      ?? free.slice().sort((a, b) => b.z - a.z)[0];
+    forced++; rack.push(pick.id); peak = Math.max(peak, rack.length);
+  }
+  return { win: false, peak, forced };
 }
 
 export function findHint(tiles: Tile[]): [Tile, Tile] | null {

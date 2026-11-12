@@ -1,83 +1,44 @@
-import { turtle, type Pos } from './layout';
+import type { Pos } from './layout';
 import { BOARDS } from './boards';
+import { silhouette } from './silhouettes';
 
 const rect = (out: Pos[], x0: number, y0: number, cols: number, rows: number, z: number) => {
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) out.push({ x: x0 + i * 2, y: y0 + j * 2, z });
 };
 const build = (...parts: [number, number, number, number, number][]) => { const o: Pos[] = []; parts.forEach((p) => rect(o, ...p)); return o; };
 
-export { grid } from './layout';
-import { grid } from './layout';
-
 export interface LayoutDef { id: string; name: string; make: () => Pos[]; shape?: boolean }
 export const LAYOUTS: Record<string, LayoutDef> = {
   galet: { id: 'galet', name: 'Galet', make: () => build([0, 0, 6, 4, 0], [2, 2, 4, 2, 1], [4, 2, 2, 2, 2]) }, // 36
   pont: { id: 'pont', name: 'Pont', make: () => build([0, 0, 10, 3, 0], [2, 0, 8, 1, 1], [2, 4, 8, 1, 1], [8, 2, 2, 1, 1]) }, // 48
   pyramide: { id: 'pyramide', name: 'Pyramide', make: () => build([0, 0, 8, 5, 0], [2, 2, 6, 3, 1], [4, 4, 4, 1, 2], [6, 4, 2, 1, 3]) }, // 64
-  fleur: { id: 'fleur', name: 'Fleur', make: () => build([6, 0, 4, 8, 0], [0, 4, 3, 4, 0], [14, 4, 3, 4, 0], [8, 4, 2, 4, 1], [8, 6, 2, 2, 2], [2, 6, 1, 2, 1], [16, 6, 1, 2, 1]) }, // 72
-  papillon: { id: 'papillon', name: 'Papillon', make: () => build([0, 0, 4, 5, 0], [12, 0, 4, 5, 0], [8, 2, 2, 3, 0], [2, 2, 2, 3, 1], [14, 2, 2, 3, 1], [8, 2, 2, 3, 1], [8, 4, 2, 1, 2], [4, 10, 1, 1, 0], [20, 10, 1, 1, 0]) }, // 84
-  forteresse: { id: 'forteresse', name: 'Forteresse', make: () => build([0, 0, 10, 6, 0], [0, 0, 2, 2, 1], [16, 0, 2, 2, 1], [0, 8, 2, 2, 1], [16, 8, 2, 2, 1], [0, 0, 1, 2, 2], [18, 0, 1, 2, 2], [0, 8, 1, 2, 2], [18, 8, 1, 2, 2], [6, 4, 4, 2, 1], [8, 4, 2, 2, 2]) }, // 96
-  montagne: { id: 'montagne', name: 'Montagne', make: () => build([0, 0, 12, 6, 0], [2, 2, 10, 4, 1], [8, 4, 4, 2, 2]) }, // 120
-  tortue: { id: 'tortue', name: 'Tortue', make: turtle }, // 144
-  // ---- shaped boards (original patterns)
-  coeur: { id: 'coeur', name: 'Cœur', shape: true, make: () => grid(
-    [0, 0, 0, ['.###..###.', '##########', '##########', '.########.', '..######..', '...####...', '....##....']],
-    [1, 1, 1, ['.##..##.', '########', '.######.', '..####..', '...##...']],
-    [2, 2, 2, ['#....#', '.####.', '..##..']],
-  ) },
-  capy: { id: 'capy', name: 'Capybara', shape: true, make: () => grid( // side view facing right: little ears, blunt head with an eye hole, barrel body, legs
-    [0, 0, 0, ['...........#.#.', '...#######.####', '.###########.##', '###############', '##############.', '.############..', '.##.......##...']],
-    [1, 1, 1, ['...######.....', '.#########....', '.#########....', '..#######.....']],
-    [2, 4, 4, ['#####', '#####']],
-  ) },
-  chat: { id: 'chat', name: 'Chat', shape: true, make: () => grid( // cat head: two pointy ears
-    [0, 0, 0, ['#........#', '##......##', '###.##.###', '##########', '##########', '##########', '.########.', '..######..']],
-    [1, 1, 1, ['#.......#', '.........', '.########', '.#######.', '..######.', '...###...']],
-    [2, 2, 5, ['.####.', '..##..']],
-  ) },
-  ours: { id: 'ours', name: 'Ourson', shape: true, make: () => grid( // bear head: round ears
-    [0, 0, 0, ['##......##', '##.####.##', '.########.', '##########', '##########', '.########.', '..######..']],
-    [1, 1, 1, ['#.......#', '..#####..', '.#######.', '.#######.', '..#####..']],
-    [2, 4, 4, ['###', '###']],
-  ) },
-  etoile: { id: 'etoile', name: 'Étoile', shape: true, make: () => grid(
-    [0, 0, 0, ['......##......', '.....####.....', '##############', '.############.', '...########...', '..####..####..', '.###......###.']],
-    [1, 1, 1, ['.....###.....', '.###########.', '...#######...', '...##...##...']],
-    [2, 10, 2, ['###']],
-  ) },
-  champignon: { id: 'champignon', name: 'Champignon', shape: true, make: () => grid(
-    [0, 0, 0, ['...######...', '.##########.', '############', '############', '....####....', '....####....', '...######...']],
-    [1, 1, 1, ['...#####...', '.#########.', '.#########.', '....###....']],
-    [2, 2, 2, ['..####..', '.######.']],
-  ) },
-  carotte: { id: 'carotte', name: 'Carotte', shape: true, make: () => grid( // lying carrot: leafy top on the left, pointy tip on the right
-    [0, 0, 0, ['##..........', '.#.#######..', '..##########', '.#.#######..', '##..........']],
-    [1, 7, 1, ['######', '######']],
-    [2, 9, 2, ['####']],
-  ) },
-  yuzu: { id: 'yuzu', name: 'Yuzu', shape: true, make: () => grid( // round fruit with a little leaf
-    [0, 0, 0, ['....##....', '..######..', '.########.', '##########', '##########', '.########.', '..######..']],
-    [1, 3, 3, ['.####.', '######', '.####.']],
-    [2, 7, 5, ['##']],
-  ) },
-  nuage: { id: 'nuage', name: 'Nuage', shape: true, make: () => grid( // puffy cloud (onsen steam, mountain snow)
-    [0, 0, 0, ['...###..###...', '..##########..', '##############', '##############', '.############.']],
-    [1, 3, 1, ['.###..###.', '##########', '.########.']],
-    [2, 7, 3, ['###', '###']],
-  ) },
+  fleur: { id: 'fleur', name: 'Fleur', shape: true, make: () => silhouette('fleur') }, // 72
+  papillon: { id: 'papillon', name: 'Papillon', shape: true, make: () => silhouette('papillon') }, // 68
+  forteresse: { id: 'forteresse', name: 'Forteresse', shape: true, make: () => silhouette('forteresse') }, // 96
+  montagne: { id: 'montagne', name: 'Montagne', shape: true, make: () => silhouette('montagne') }, // 120
+  tortue: { id: 'tortue', name: 'Tortue', shape: true, make: () => silhouette('tortue') }, // 144
+  coeur: { id: 'coeur', name: 'Cœur', shape: true, make: () => silhouette('coeur') }, // 78
+  capy: { id: 'capy', name: 'Capybara', shape: true, make: () => silhouette('capy') }, // 112
+  chat: { id: 'chat', name: 'Chat', shape: true, make: () => silhouette('chat') }, // 90
+  ours: { id: 'ours', name: 'Ourson', shape: true, make: () => silhouette('ours') }, // 86
+  etoile: { id: 'etoile', name: 'Étoile', shape: true, make: () => silhouette('etoile') }, // 82
+  champignon: { id: 'champignon', name: 'Champignon', shape: true, make: () => silhouette('champignon') }, // 90
+  carotte: { id: 'carotte', name: 'Carotte', shape: true, make: () => silhouette('carotte') }, // 46
+  yuzu: { id: 'yuzu', name: 'Yuzu', shape: true, make: () => silhouette('yuzu') }, // 66
+  nuage: { id: 'nuage', name: 'Nuage', shape: true, make: () => silhouette('nuage') }, // 86
   ...BOARDS,
 };
 
 export interface World { id: string; name: string; music: number; bg: [string, string]; accent: string; mascot: string }
 export const WORLDS: World[] = [
-  { id: 'riviere', name: 'Rivière', music: 0, bg: ['#D7F1E8', '#7FC8B4'], accent: '#2FA4A9', mascot: 'agrume' },
+  { id: 'riviere', name: 'Rivière', music: 0, bg: ['#D7F1E8', '#7FC8B4'], accent: '#207E82', mascot: 'agrume' },
   { id: 'onsen', name: 'Onsen', music: 1, bg: ['#FCE8DE', '#E7A98E'], accent: '#D96B4A', mascot: 'serviette' },
   { id: 'foret', name: 'Forêt', music: 2, bg: ['#E3F2D3', '#8DBF6E'], accent: '#3F8F4E', mascot: 'ours' },
   { id: 'montagne', name: 'Montagne enneigée', music: 3, bg: ['#EAF4FF', '#9DBFE3'], accent: '#4B7BC4', mascot: 'bonnet' },
   { id: 'temple', name: 'Temple', music: 4, bg: ['#FFF1CF', '#E8B864'], accent: '#B9822A', mascot: 'chat' },
 ];
 
-export interface Level { n: number; world: number; index: number; layout: string; /** unique campaign level name */ name?: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number; /** secret level of its world */ secret?: boolean }
+export interface Level { n: number; world: number; index: number; layout: string; /** unique campaign level name */ name?: string; seed: number; par: number; hints: number; shuffles: number; /** undo budget, -1 = unlimited */ undos: number; /** secret level of its world */ secret?: boolean; /** 0 = classic select-two; >0 = top-rack slot count. The only switch for the rule. */ rack: number }
 // Phase 3 (content & variety): every level has its own board, themed by its world (river, onsen, forest, snowy peaks,
 // temple), and no board is shared between worlds. 35 boards: 30 levels + 5 secret levels (one per world).
 // L8 keeps its board+seed (soft-lock repro test).
@@ -104,14 +65,28 @@ export const SECRET_STARS = 15;
 // Audit 2026-10-30: all levels re-seeded with the smart-bot simulation (src/sim.ts, random shuffles, 8% capydindon) for a
 // smooth curve: bot clear rate ≈ 98% (L1) → ≈ 82% (L30), no spikes (L8 kept: soft-lock repro). Phase 3: re-seeded for the new
 // boards (L11 and L15 hide a capydindon); seeds 31–35 are the secret levels, each as hard as its world's last level.
-export const SEEDS: number[] = [9100003,9295034,9300009,9423769,9595043,9607937,9707940,70859,9923784,10079220,10187142,10936503,10307958,10431718,10816805,21769291,10747565,11243518,10947571,11055493,11385147,11239661,12020698,11748508,11563427,11607997,11723838,12124763,23005978,12213903,12108012,12223853,12387208,12400102,13355357];
+export const SEEDS: number[] = [2200000,8001301,2201800,2205477,8017506,8031109,5859577,70859,7150570,8799024,9736811,10715713,11689133,12657071,13677088,14590206,15604741,1217152,17504984,18552411,1227622,9166615,4225532,4516869,1630295,24302478,8033826,8115090,8264015,8099239,29161355,30121070,1927324,9,8130348];
 /** Hints per level: 4 / 3 / 2 in the first worlds, and 2 (not 1) on the big boards of worlds 4–5. */
 export const hintBudget = (world: number) => Math.max(2, 4 - world);
 /** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */
 export const undoBudget = (world: number) => (world === 0 ? -1 : world <= 2 ? 5 : 3);
+/** Slots by world: Rivière classic, then 6 / 5 / 5 / 4 (design §5). */
+export const RACK_BY_WORLD: readonly number[] = [0, 6, 5, 5, 4];
+export const rackSlots = (world: number) => RACK_BY_WORLD[world] ?? 0;
+/**
+ * Campaign deals that hide a whole group in one column, so classic play cannot finish.
+ * The first board of each rack world stays solvable without the rack. Onsen keeps a second
+ * one too — the pyramid, still on its audited seed. Secrets are buried.
+ */
+export function campaignBury(l: { n: number; world: number; rack: number; secret?: boolean }): boolean {
+  if (l.rack <= 0 || l.world === 0) return false;
+  if (l.secret) return true;
+  const i = l.n - l.world * 6;
+  return l.world === 1 ? i >= 2 : i >= 1;
+}
 const mkLevel = (layout: string, w: number, i: number, n: number, name: string): Level => {
   const tiles = LAYOUTS[layout].make().length;
-  return { n, world: w, index: i, layout, name, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: hintBudget(w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w) };
+  return { n, world: w, index: i, layout, name, seed: SEEDS[n], par: Math.round(tiles * (3.2 + w * 0.3)), hints: hintBudget(w), shuffles: Math.max(1, 3 - Math.floor(w / 2)), undos: undoBudget(w), rack: rackSlots(w) };
 };
 /** The 30-level campaign (n = 0…29). */
 export const LEVELS: Level[] = PLAN.flatMap((ls, w) => ls.map((layout, i) => mkLevel(layout, w, i, w * 6 + i, LEVEL_NAMES[w][i])));

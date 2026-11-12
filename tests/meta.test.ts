@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, NEW_STATS, dayKey, frDate, OUTFITS, THEMES, BACKS, owns, buy, carrotReward, DIFFS, ACHIEVEMENTS, checkAchievements, hash } from '../src/meta';
+import { dailyLevel, endlessLevel, zenLevel, buryDeal, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, NEW_STATS, dayKey, frDate, OUTFITS, THEMES, BACKS, owns, buy, carrotReward, DIFFS, ACHIEVEMENTS, checkAchievements, hash } from '../src/meta';
 import { LAYOUTS, LEVELS, undoBudget } from '../src/levels';
-import { deal, solve, winRate, isFree, matches } from '../src/engine';
+import { deal, solve, winRate, playRack, isFree, matches } from '../src/engine';
 
 describe('daily challenge', () => {
   test('same date → same board, different dates vary', () => {
@@ -30,7 +30,12 @@ describe('endless & zen', () => {
   });
   test('endless runs are deterministic per seed and solvable', () => {
     expect(endlessLevel(2, 7).seed).toBe(endlessLevel(2, 7).seed);
-    for (let r = 0; r < 8; r++) { const l = endlessLevel(r, 99); expect(solve(deal(LAYOUTS[l.layout].make(), l.seed).tiles)).not.toBeNull(); }
+    for (let r = 0; r < 8; r++) {
+      const l = endlessLevel(r, 99);
+      const d = deal(LAYOUTS[l.layout].make(), l.seed, l.legend, l.rack, buryDeal(l));
+      if (d.needsRack) expect(playRack(d.tiles, l.rack).win, `round ${r}`).toBe(true);
+      else expect(solve(d.tiles), `round ${r}`).not.toBeNull();
+    }
   });
   test('zen has effectively unlimited help', () => { const z = zenLevel(5); expect(z.mode).toBe('zen'); expect(z.hints).toBeGreaterThan(50); expect(z.shuffles).toBeGreaterThan(50); });
 });

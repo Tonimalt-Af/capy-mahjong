@@ -1,6 +1,6 @@
 // Meta-progression: modes (daily / endless / zen), outfits, achievements, statistics. Pure logic → unit-tested.
-import { LAYOUTS, type Level } from './levels';
-import { fairSeed } from './engine';
+import { LAYOUTS, campaignBury, type Level } from './levels';
+import { fairSeed, rng } from './engine';
 
 export type Mode = 'level' | 'daily' | 'endless' | 'zen';
 export interface PlayLevel extends Level { mode: Mode; title: string; round?: number; date?: string; diff?: Diff; legend: number; /** a past daily replayed from the calendar */ late?: boolean }
@@ -25,7 +25,7 @@ export const frDate = (k: string) => { const [, m, d] = k.split('-').map(Number)
 /** `min` < 0: use the seed as is (a shared link already carries the final, fair seed). */
 const mk = (layout: string, seed: number, world: number, extra: Partial<PlayLevel> & { mode: Mode; title: string }, min = 0.4): PlayLevel => {
   const pos = LAYOUTS[layout].make(); const tiles = pos.length;
-  return { n: -1, index: 0, world, layout, seed: min < 0 ? seed >>> 0 : fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, undos: 5, legend: 0.1, ...extra };
+  return { n: -1, index: 0, world, layout, seed: min < 0 ? seed >>> 0 : fairSeed(pos, seed >>> 0, min), par: Math.round(tiles * (3.2 + world * 0.3)), hints: 2, shuffles: 2, undos: 5, legend: 0.1, rack: 0, ...extra };
 };
 /** Chance that the golden capydindon pair hides in a board (deterministic per seed). Steering 2026-10-30: rarer everywhere
  * (levels 20% → 8%, endless/zen 25% → 10%, daily 100% → 35%). */
@@ -41,6 +41,24 @@ export const DIFFS: { id: Diff; name: string; pool: string[]; min: number; desc:
   { id: 'expert', name: 'Expert', pool: ['tortue', 'pagode', 'refuge', 'capy', 'montagne', 'etoile'], min: 0, desc: 'Grands plateaux pièges' },
 ];
 /** Same board for everyone on a given day. */
+/** Zen rack by difficulty. Facile stays classic. */
+export const zenSlots = (diff?: Diff) => (diff === 'moyen' ? 6 : diff === 'difficile' ? 5 : diff === 'expert' ? 4 : 0);
+/** Endless rack by 0-based round: manches 1–2 classic, 3–8 → 6, 9–14 → 5, then 4.
+ * A manche stops when the rack is full and nothing free matches it. That is the fail state:
+ * undo puts the last tile back, a shuffle reopens a move. The deal keeps a guided line
+ * (match a free pair, otherwise park the tile whose mate is buried underneath). */
+export const endlessSlots = (round: number) => (round < 2 ? 0 : round < 8 ? 6 : round < 14 ? 5 : 4);
+/** Share of generated seeds that try to bury a group. Not a reject loop: the rest stay classic. */
+export const BURY_RATE = { moyen: 0.8, difficile: 0.85, expert: 0.9, rack6: 0.75, rack5: 0.8, rack4: 0.85 } as const;
+export function generatedBury(seed: number, rate: number): boolean { return rng(seed ^ 0xB172)() < rate; }
+export function buryDeal(l: { mode?: string; rack?: number; n: number; world: number; secret?: boolean; seed: number; diff?: Diff; round?: number }): boolean {
+  if ((l.rack ?? 0) <= 0 || l.mode === 'daily') return false;
+  if (!l.mode || l.mode === 'level') return campaignBury({ n: l.n, world: l.world, rack: l.rack ?? 0, secret: l.secret });
+  if (l.mode === 'zen') return generatedBury(l.seed, l.diff === 'expert' ? BURY_RATE.expert : l.diff === 'difficile' ? BURY_RATE.difficile : BURY_RATE.moyen);
+  const slots = l.rack ?? 0;
+  return generatedBury(l.seed, slots <= 4 ? BURY_RATE.rack4 : slots === 5 ? BURY_RATE.rack5 : BURY_RATE.rack6);
+}
+
 export function dailyLevel(key = dayKey(), late = false): PlayLevel {
   const h = hash('capy-daily-' + key);
   const pool = key >= DAILY_POOL_SWITCH ? DAILY_LAYOUTS_2 : DAILY_LAYOUTS;
@@ -57,16 +75,18 @@ export function endlessLevel(round: number, seed: number): PlayLevel {
   const h = hash(`endless-${seed}-${t}`); const i = h % tier.length; const j = tier.length > 1 ? (i + 1 + ((h >>> 8) % (tier.length - 1))) % tier.length : i;
   const [a, b] = [tier[i], tier[j]].sort((x, y) => LAYOUTS[x].make().length - LAYOUTS[y].make().length);
   const layout = round % 2 ? b : a;
-  return mk(layout, (seed + round * 7907) >>> 0, round % 5, { mode: 'endless', title: `Infini · manche ${round + 1}`, round, hints: round < 4 ? 2 : 1, shuffles: round < 6 ? 2 : 1 });
+  const rack = endlessSlots(round);
+  return mk(layout, (seed + round * 7907) >>> 0, round % 5, { mode: 'endless', title: `Infini · manche ${round + 1}`, round, hints: round < 4 ? 2 : 1, shuffles: round < 6 ? 2 : 1, rack }, rack > 0 ? -1 : 0.4);
 }
 export function zenLevel(seed: number, diff: Diff = 'moyen'): PlayLevel {
   const D = DIFFS.find((d) => d.id === diff) ?? DIFFS[1]; const layout = D.pool[seed % D.pool.length];
-  return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, undos: -1, diff: D.id }, D.min);
+  const rack = zenSlots(D.id);
+  return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, undos: -1, diff: D.id, rack }, rack > 0 ? -1 : D.min);
 }
 /** The exact board of a shared zen link: final seed + layout, no fairness re-pick → same board for everyone. */
 export function zenShared(seed: number, diff: Diff, layout: string): PlayLevel {
   const D = DIFFS.find((d) => d.id === diff) ?? DIFFS[1];
-  return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, undos: -1, diff: D.id }, -1);
+  return mk(layout, seed, seed % 5, { mode: 'zen', title: `Zen ${D.name} · ${LAYOUTS[layout].name}`, hints: 99, shuffles: 99, undos: -1, diff: D.id, rack: zenSlots(D.id) }, -1);
 }
 /** Share link of a zen board (carries the final seed and layout). */
 export const zenLink = (lv: PlayLevel) => `?mode=zen&seed=${lv.seed}&diff=${lv.diff ?? 'moyen'}&layout=${lv.layout}`;

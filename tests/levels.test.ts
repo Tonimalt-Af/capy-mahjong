@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { LAYOUTS, LEVELS, WORLDS, stars, score } from '../src/levels';
-import { deal, isFree, matches, winRate, fairSeed } from '../src/engine';
+import { LAYOUTS, LEVELS, WORLDS, SECRETS, stars, score } from '../src/levels';
+import { deal, isFree, matches, winRate, fairSeed, playRack } from '../src/engine';
+import { buryDeal } from '../src/meta';
+import { phoneTileWidth } from '../src/fit';
 
 describe('layouts', () => {
   for (const l of Object.values(LAYOUTS)) it(`${l.id}: even, unique, supported`, () => {
@@ -11,15 +13,18 @@ describe('layouts', () => {
     // no two tiles overlap on the same layer
     for (const a of p) for (const b of p) if (a !== b && a.z === b.z) expect(Math.abs(a.x - b.x) >= 2 || Math.abs(a.y - b.y) >= 2).toBe(true);
   });
-  const u = (W: number, H: number, cols: number, rows: number) => Math.min((W - 16) / (cols + 1), (H - (H < 420 ? 10 : 28)) / (rows * 1.3 + 1.2));
-  it('shaped boards: at least 6 original patterns, ≤144 tiles, fit a phone landscape stage', () => {
+  it('shaped boards: at least 6 original patterns, ≤144 tiles, tiles stay readable on a small phone', () => {
     const shapes = Object.values(LAYOUTS).filter((l) => l.shape); expect(shapes.length).toBeGreaterThanOrEqual(6);
+    const rackIds = new Set([...LEVELS, ...SECRETS].filter((l) => l.rack > 0).map((l) => l.layout));
     for (const l of Object.values(LAYOUTS)) {
-      const p = l.make(); expect(p.length).toBeLessThanOrEqual(144);
-      const cols = Math.max(...p.map((q) => q.x)) + 2, rows = Math.max(...p.map((q) => q.y)) + 2;
-      // tiles never smaller than on the classic turtle (15×8 tiles, verified on a 844×390 phone in e2e): same fit rule as main.ts layout()
-      expect(rows / 2, l.id).toBeLessThanOrEqual(8);
-      for (const [W, H] of [[600, 300], [700, 330], [820, 360], [1200, 640]]) expect(u(W, H, cols, rows), `${l.id} ${W}×${H}`).toBeGreaterThanOrEqual(u(W, H, 30, 16));
+      const p = l.make(); expect(p.length).toBeLessThanOrEqual(144); expect(p.length % 2).toBe(0);
+      const xs = p.map((q) => q.x), ys = p.map((q) => q.y);
+      const cols = Math.max(...xs) - Math.min(...xs) + 2, rows = Math.max(...ys) - Math.min(...ys) + 2;
+      const zMax = Math.max(...p.map((q) => q.z));
+      const rack = rackIds.has(l.id);
+      // 44px is the minimum comfortable tap on the smallest phone we ship for (667×375), with the rack band when that level uses one.
+      expect(phoneTileWidth(cols, rows, zMax, 667, 375, rack), `${l.id} 667`).toBeGreaterThanOrEqual(44);
+      expect(phoneTileWidth(cols, rows, zMax, 844, 390, rack), `${l.id} 844`).toBeGreaterThanOrEqual(44);
     }
   });
   it('every shaped board is solvable and not a trap for random seeds', () => {
@@ -38,9 +43,10 @@ describe('levels', () => {
   it('30 levels in 5 worlds', () => { expect(LEVELS.length).toBe(30); expect(WORLDS.length).toBe(5); });
   it('every level deal is solvable via its built-in solution', () => {
     for (const lv of LEVELS) {
-      const { tiles, solution } = deal(LAYOUTS[lv.layout].make(), lv.seed, 0.2);
-      expect(solution.length * 2).toBe(tiles.length);
-      for (const [a, b] of solution) { const live = tiles.filter((t) => !t.removed); expect(isFree(tiles[a], live) && isFree(tiles[b], live) && matches(tiles[a].kind, tiles[b].kind)).toBe(true); tiles[a].removed = tiles[b].removed = true; }
+      const dealt = deal(LAYOUTS[lv.layout].make(), lv.seed, 0.2, lv.rack, buryDeal(lv));
+      expect(dealt.solution.length * 2).toBe(dealt.tiles.length);
+      if (dealt.needsRack) expect(playRack(dealt.tiles, lv.rack).win, `L${lv.n + 1}`).toBe(true);
+      else { const { tiles, solution } = dealt; for (const [a, b] of solution) { const live = tiles.filter((t) => !t.removed); expect(isFree(tiles[a], live) && isFree(tiles[b], live) && matches(tiles[a].kind, tiles[b].kind)).toBe(true); tiles[a].removed = tiles[b].removed = true; } }
     }
   });
   it('small layouts still use a variety of tiles', () => { const { tiles } = deal(LAYOUTS.galet.make(), 5); expect(new Set(tiles.map((t) => t.kind)).size).toBeGreaterThan(10); });

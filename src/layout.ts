@@ -1,4 +1,23 @@
 export interface Pos { x: number; y: number; z: number } // half-tile units
+
+/** Centered rectangular layers, each a subset of the one below. `layers[z] = [cols, rows]`. */
+export function stack(layers: [number, number][]): Pos[] {
+  const [C, R] = layers[0];
+  const out: Pos[] = [];
+  layers.forEach(([c, r], z) => {
+    const x0 = Math.floor((C - c) / 2) * 2;
+    const y0 = Math.floor((R - r) / 2) * 2;
+    for (let j = 0; j < r; j++) for (let i = 0; i < c; i++) out.push({ x: x0 + i * 2, y: y0 + j * 2, z });
+  });
+  return out;
+}
+
+/** Two lantern stacks with a gap between them (90 tiles, 7×5, 3 layers). */
+export function lanterns(): Pos[] {
+  const out: Pos[] = [];
+  for (const x0 of [0, 8]) for (let z = 0; z < 3; z++) for (let j = 0; j < 5; j++) for (let i = 0; i < 3; i++) out.push({ x: x0 + i * 2, y: j * 2, z });
+  return out;
+}
 export function turtle(): Pos[] {
   const out: Pos[] = [];
   const row = (y: number, x0: number, x1: number, z = 0) => { for (let x = x0; x <= x1; x += 2) out.push({ x, y, z }); };

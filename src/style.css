@@ -1,4 +1,4 @@
-:root{--ink:#3B2416;--cream:#FFF6E6;--side:#E2BF8C;--side2:#C99A62;--gold:#F5B82E;--teal:#2FA4A9;--w1:#D7F1E8;--w2:#7FC8B4;--acc:#2FA4A9;--r:18px}
+:root{--ink:#3B2416;--cream:#FFF6E6;--side:#E2BF8C;--side2:#C99A62;--gold:#F5B82E;--teal:#207E82;--w1:#D7F1E8;--w2:#7FC8B4;--acc:#207E82;--r:18px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;font-family:Fredoka,system-ui,sans-serif;color:var(--ink);user-select:none;-webkit-user-select:none;touch-action:manipulation;overscroll-behavior:none}
 body{background:radial-gradient(120% 90% at 50% 20%,#ffffffaa,transparent 60%),linear-gradient(180deg,var(--w1),var(--w2));transition:background .6s}
@@ -108,22 +108,39 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
 .stage{position:relative;min-height:0;min-width:0;grid-column:1;grid-row:2}
 .bar{grid-column:2;grid-row:2;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:0 14px 10px 4px}
 .bar .btn{flex-direction:column;gap:2px;padding:8px 10px;min-width:84px;font-size:14px}
-.board{position:absolute;left:50%;top:50%}
+.board{position:absolute;left:50%;top:50%;z-index:1}
+.mat{position:absolute;z-index:0;border-radius:36px;pointer-events:none;background:#fff8eeaa;box-shadow:inset 0 0 0 2px #3b2a2014, 0 16px 40px #3b2a2012}
+.side-art{position:absolute;bottom:16px;z-index:0;pointer-events:none;opacity:.92}
+.side-art svg{width:100%;height:auto;display:block;filter:drop-shadow(0 8px 0 #3b2a2014)}
 .tile{position:absolute;border-radius:calc(var(--u)*.16);cursor:pointer;transition:transform .14s cubic-bezier(.3,1.6,.6,1),opacity .3s,filter .2s,translate .3s;
   box-shadow:calc(var(--d)*-1) var(--d) 0 var(--side),calc(var(--d)*-1.7) calc(var(--d)*1.7) 0 var(--side2),calc(var(--d)*-1.5) calc(var(--d)*2.6) calc(var(--d)*2.5) #3b241640}
 .tile svg{width:100%;height:100%;display:block;border-radius:inherit}
-.dim .tile.blocked svg{filter:brightness(.78) saturate(.7)}
+.dim .tile.blocked svg{filter:brightness(.5) saturate(.42)}
+.dim .tile:not(.blocked):not(.gone) svg{filter:brightness(1.04) saturate(1.05)}
 .tile.sel{transform:translateY(-5px) scale(1.04)}
 .tile.sel::after,.tile.hint::after{content:"";position:absolute;inset:-3px;border-radius:inherit;border:3.5px solid var(--gold);box-shadow:0 0 12px #F5B82Eaa;pointer-events:none}
 .tile.hint::after{animation:hint .7s infinite alternate}
 @keyframes hint{from{border-color:#fff;box-shadow:0 0 0 #fff0}to{border-color:var(--gold);box-shadow:0 0 18px #F5B82E}}
-.tile.shake{animation:shake .32s}
-@keyframes shake{20%,60%{translate:-3px 0}40%,80%{translate:3px 0}}
+.tile.shake{animation:shake .26s}
+@keyframes shake{30%,70%{translate:-2px 0}50%{translate:2px 0}}
 .tile.gone{opacity:0;transform:translateY(-18px) scale(.7) rotate(-6deg);pointer-events:none}
-.tile.enter{animation:enter .45s cubic-bezier(.3,1.5,.6,1) both}
-@keyframes enter{from{opacity:0;translate:0 -30px;scale:.8}}
-.tile.flip{animation:flip .45s ease}
+.tile.gone.meet{animation:meet .24s ease-in forwards}
+@keyframes meet{to{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.55)}}
+.tile.return{animation:back .22s cubic-bezier(.2,.8,.2,1)}
+@keyframes back{from{scale:.86;opacity:.35}}
+.tile.enter{animation:enter .28s cubic-bezier(.3,1.5,.6,1) both}
+@keyframes enter{from{opacity:0;translate:0 -16px;scale:.86}}
+.tile.flip{animation:flip .32s ease}
 @keyframes flip{50%{scale:.1 1}}
+.flyer{position:fixed;left:0;top:0;z-index:32;pointer-events:none;transition:transform .2s cubic-bezier(.22,.8,.2,1);will-change:transform}
+.flyer svg{width:100%;height:100%;display:block;border-radius:12%}
+.flyer.fuse{animation:fusepop .16s ease-in forwards}
+@keyframes fusepop{40%{scale:1.16}100%{scale:.3;opacity:0}}
+.rack-slot.arriving svg{opacity:0}
+#g-rack.tight .rack-slot.empty{animation:tight .4s ease}
+@keyframes tight{40%{box-shadow:inset 0 0 0 3px #E07A3D}}
+.cheer{font-weight:700;color:#2A7F4B;margin:0 0 6px}
+.card.win.world .ribbon{animation:bump .35s cubic-bezier(.3,1.6,.6,1)}
 .fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50}
 /* overlays */
 .ov{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:#3B241655;backdrop-filter:blur(3px);padding:12px}
@@ -174,7 +191,9 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
   .bar{gap:10px;padding:0 10px 6px 2px}.bar .btn{min-width:72px;padding:4px 8px;font-size:13px}
   .card{padding:12px 20px 14px}.card h2{font-size:24px}.capy-s{width:70px}.capy-s.win{width:76px}.bigstars .star{width:44px;height:44px}.bigstars .s1{width:54px;height:54px}
   .maphead{padding:6px 10px}.path{height:72vh}.worldcard{padding:8px}.wc-art{width:58%}
-  .how{gap:8px}.hstep{padding:6px}.hstep p{font-size:12.5px}
+  .card.howto{padding:8px 12px 10px}.card.howto h2{font-size:20px;margin:0 0 4px}
+  .how{grid-template-columns:1fr 1fr;gap:6px;margin:2px 0 4px}.hstep{padding:4px 6px}.hstep p{font-size:12px;margin:2px 0 0;line-height:1.2}
+  .hart{height:40px}.ht-tile{width:30px;height:40px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 .rot-art{width:260px;height:200px}.rot-art svg{width:150px;left:0;top:20px}
@@ -476,3 +495,27 @@ button.wallet{border:0;font:inherit;color:inherit}
 /* level names (steering 2026-10-30): two short lines max under each map node */
 .node .lname{white-space:normal;text-align:center;max-width:118px;line-height:1.15;padding:2px 8px}
 @media (max-height:500px){.node .lname{font-size:11px;max-width:100px}}
+
+/* Rack (plateau du haut). Hidden in classic games. On a tall screen it replaces the pair chip inside the top banner.
+   On a short phone it leaves the banner and sits in a 52px band at the top of the board. */
+#g-rack{display:none;align-items:center;justify-content:center;gap:6px;min-width:0}
+body[data-rack="1"] #g-rack{display:flex}
+body[data-rack="1"] .chips{display:contents}
+body[data-rack="1"] #g-combo{order:3}
+body[data-rack="1"] #g-rack{order:4;flex:1}
+body[data-rack="1"] #g-leg{order:5}
+body[data-rack="1"] #g-time{order:6}
+body[data-rack="1"] #g-score{order:7}
+body[data-rack="1"] #g-pairs{display:none!important}
+.rack-slot{width:46px;height:60px;flex:none;border-radius:8px;background:#fff;box-shadow:-2px 2px 0 var(--side),-3px 3px 0 var(--side2);position:relative}
+.rack-slot.empty{background:#3b241614;box-shadow:inset 0 0 0 2px #3b241628}
+.rack-slot svg{width:100%;height:100%;display:block;border-radius:inherit}
+.rack-slot.hint,.rack-slot.nudge{outline:3px solid var(--gold);outline-offset:2px}
+@media (max-height:500px){
+  /* Stay absolutely filling the screen. `relative` would shrink the grid to the side rail and crush the tiles. */
+  body[data-rack="1"] #v-game.active{position:absolute;inset:0}
+  body[data-rack="1"] #v-game .hud{position:static}
+  body[data-rack="1"] #g-rack{position:absolute;top:0;left:88px;right:92px;height:52px;z-index:6;flex:none}
+  body[data-rack="1"] #g-score{display:none!important}
+  body[data-rack="1"] .rack-slot{width:40px;height:52px}
+}

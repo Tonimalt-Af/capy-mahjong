@@ -64,7 +64,7 @@ test('all 18 new boards fit the screen with readable tiles (never smaller than t
     const boxes = await page.locator('#board .tile').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom, r.width]; }));
     expect(boxes.length, lay).toBeGreaterThan(40);
     for (const [l, t, r, b] of boxes) { expect(l, lay).toBeGreaterThanOrEqual(0); expect(t, lay).toBeGreaterThanOrEqual(0); expect(r, lay).toBeLessThanOrEqual(vp.width); expect(b, lay).toBeLessThanOrEqual(vp.height); }
-    expect(Math.min(...boxes.map((b) => b[4])), `${lay} tile width`).toBeGreaterThanOrEqual(30);
+    expect(Math.min(...boxes.map((b) => b[4])), `${lay} tile width`).toBeGreaterThanOrEqual(44);
   }
 });
 

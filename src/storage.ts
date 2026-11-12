@@ -1,15 +1,16 @@
-import { NEW_STATS, ACHIEVEMENTS, SHELF_ITEMS, DECOR, hash, DIFFS, type Stats, type Diff, type PlayLevel, type Mode } from './meta';
+import { NEW_STATS, ACHIEVEMENTS, SHELF_ITEMS, DECOR, hash, DIFFS, zenSlots, endlessSlots, type Stats, type Diff, type PlayLevel, type Mode } from './meta';
 import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt } from './levels';
 import { KIND_BY_ID, type Theme } from './tiles';
 import { isDay } from './dates';
+import type { RackAction } from './rack';
 
 /** In-progress board, saved after every move so an interrupted game can be resumed. */
-export interface Run { level: PlayLevel; kinds: string[]; removed: number[]; history: [number, number][]; t: number; hints: number; shuffles: number; undos: number; undoBonus?: number; score: number; legends: number; maxCombo: number }
+export interface Run { level: PlayLevel; kinds: string[]; removed: number[]; history: [number, number][]; t: number; hints: number; shuffles: number; undos: number; undoBonus?: number; score: number; legends: number; maxCombo: number; /** absent = classic select-two */ rules?: 'rack'; rackSlots?: number; rack?: number[]; actions?: RackAction[]; /** capydindon already counted in career stats this run, even if undone */ legendSeen?: boolean }
 /** Every key this app writes is prefixed: the github.io origin is shared with the owner's other Pages sites. */
 export const KEY = 'capy-mahjong-v1';
 export const BACKUP_KEY = 'capy-mahjong-v1.bak';
 export const CORRUPT_KEY = 'capy-mahjong-v1.corrupt';
-export interface Save { stars: Record<number, number>; best: Record<string, number>; settings: { sfx: boolean; music: boolean; musicVol: number; sfxVol: number; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean; v?: number }; seenHowTo: boolean; seenUndo?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; /** tile back */ edge: string; /** onsen decorations shown on the home screen */ decor: string[]; diff: Diff; run: Run | null; firstDay?: string }
+export interface Save { stars: Record<number, number>; best: Record<string, number>; settings: { sfx: boolean; music: boolean; musicVol: number; sfxVol: number; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean; v?: number }; seenHowTo: boolean; seenUndo?: boolean; /** Rack coach already shown. Absent on old saves = false. */ seenRack?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; /** tile back */ edge: string; /** onsen decorations shown on the home screen */ decor: string[]; diff: Diff; run: Run | null; firstDay?: string }
 /** Settings schema version. v2: pair highlight ("Montrer les paires possibles") is off by default; older saves are switched off once. */
 export const SETTINGS_V = 2;
 const DEF: Save = { stars: {}, best: {}, settings: { sfx: true, music: true, musicVol: 0.45, sfxVol: 0.6, dim: true, vibrate: true, hl: false, autohint: false, v: SETTINGS_V }, seenHowTo: false, stats: NEW_STATS(), ach: [], outfit: 'agrume', carrots: 0, owned: [], theme: 'capy', bg: 'monde', edge: 'bois', decor: [], diff: 'moyen', run: null };
@@ -40,13 +41,22 @@ function stats(x: unknown): Stats {
 const MODES: Mode[] = ['level', 'daily', 'endless', 'zen'];
 function level(x: unknown): PlayLevel | null {
   if (!isObj(x) || !has(LAYOUTS, x.layout) || !MODES.includes(x.mode as Mode)) return null;
-  const mode = x.mode as Mode; const l: PlayLevel = { mode, layout: x.layout, n: int(x.n, -1, -1, ALL_LEVELS.length - 1), world: int(x.world, 0, 0, 4), index: int(x.index, 0, 0, 99), seed: int(x.seed, 1, 0, 2 ** 32 - 1), par: int(x.par, 300, 30, 9999), hints: int(x.hints, 1, 0, 99), shuffles: int(x.shuffles, 1, 0, 99), undos: int(x.undos, -1, -1, 99), legend: typeof x.legend === 'number' && x.legend >= 0 && x.legend <= 1 ? x.legend : 0, title: typeof x.title === 'string' ? x.title.slice(0, 60) : '' };
+  const mode = x.mode as Mode; const l: PlayLevel = { mode, layout: x.layout, n: int(x.n, -1, -1, ALL_LEVELS.length - 1), world: int(x.world, 0, 0, 4), index: int(x.index, 0, 0, 99), seed: int(x.seed, 1, 0, 2 ** 32 - 1), par: int(x.par, 300, 30, 9999), hints: int(x.hints, 1, 0, 99), shuffles: int(x.shuffles, 1, 0, 99), undos: int(x.undos, -1, -1, 99), legend: typeof x.legend === 'number' && x.legend >= 0 && x.legend <= 1 ? x.legend : 0, rack: 0, title: typeof x.title === 'string' ? x.title.slice(0, 60) : '' };
   if (mode === 'level' && l.n < 0) return null;
-  if (mode === 'level') l.name = levelAt(l.n).name; // never taken from the save: names are ours
+  if (mode === 'level') l.name = levelAt(l.n).name;
   if (mode === 'daily') { if (!isDay(x.date)) return null; l.date = x.date; if (x.late === true) l.late = true; }
   if (mode === 'endless') l.round = int(x.round, 0, 0, 999);
   if (mode === 'zen' || x.diff !== undefined) { const d = DIFFS.find((f) => f.id === x.diff); if (d) l.diff = d.id; else if (mode === 'zen') l.diff = 'moyen'; }
+  l.rack = expectedRack(l);
   return l;
+}
+/** Rack size the rules give this level today. Daily, world 1 and easy zen stay at 0. */
+export function expectedRack(level: PlayLevel): number {
+  if (level.mode === 'daily') return 0;
+  if (level.mode === 'zen') return zenSlots(level.diff);
+  if (level.mode === 'endless') return endlessSlots(level.round ?? 0);
+  if (level.mode === 'level' && level.n >= 0) return levelAt(level.n).rack;
+  return 0;
 }
 function run(x: unknown): Run | null {
   if (!isObj(x)) return null; const lv = level(x.level); if (!lv) return null;
@@ -58,7 +68,31 @@ function run(x: unknown): Run | null {
   const cnt = new Map<string, number>(); kinds.forEach((k, i) => { if (!removed.includes(i)) { const g = KIND_BY_ID.get(k)!.group; cnt.set(g, (cnt.get(g) ?? 0) + 1); } });
   if ([...cnt.values()].some((c) => c % 2)) return null;
   const history = Array.isArray(x.history) ? x.history.filter((p): p is [number, number] => Array.isArray(p) && p.length === 2 && p.every((v) => removed.includes(v as number))) : [];
-  return { level: lv, kinds, removed, history, t: int(x.t, 0, 0, 359999), hints: int(x.hints, 0, 0, 99), shuffles: int(x.shuffles, 0, 0, 99), undos: int(x.undos, 0, 0, 999), undoBonus: int(x.undoBonus, 0, 0, 999), score: int(x.score, 0, 0, 1e7), legends: int(x.legends, 0, 0, 1), maxCombo: int(x.maxCombo, 0, 0, 999) };
+  const base: Run = { level: lv, kinds, removed, history, t: int(x.t, 0, 0, 359999), hints: int(x.hints, 0, 0, 99), shuffles: int(x.shuffles, 0, 0, 99), undos: int(x.undos, 0, 0, 999), undoBonus: int(x.undoBonus, 0, 0, 999), score: int(x.score, 0, 0, 1e7), legends: int(x.legends, 0, 0, 1), maxCombo: int(x.maxCombo, 0, 0, 999) };
+  if (x.rules !== 'rack') return base;
+  const ids = (v: unknown) => (Array.isArray(v) && v.every((i) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < n) ? v as number[] : null);
+  const rack = ids(x.rack);
+  if (!rack || new Set(rack).size !== rack.length || rack.some((id) => removed.includes(id))) return null;
+  if (!Array.isArray(x.actions)) return null;
+  const actions: RackAction[] = [];
+  for (const a of x.actions) {
+    if (!isObj(a) || (a.type !== 'take' && a.type !== 'match')) return null;
+    const rackBefore = ids(a.rackBefore), rackAfter = ids(a.rackAfter), rem = ids(a.removed);
+    if (!rackBefore || !rackAfter || !rem) return null;
+    if (a.type === 'take' && rem.length) return null;
+    if (a.type === 'match' && rem.length !== 2) return null;
+    actions.push({ type: a.type, rackBefore, rackAfter, removed: rem, gain: int(a.gain, 0, 0, 1e7) });
+  }
+  return { ...base, rules: 'rack', rackSlots: int(x.rackSlots, lv.rack, 0, 12), rack, actions, legendSeen: aTrue(x.legendSeen) };
+}
+const aTrue = (x: unknown) => x === true;
+/** False when a saved game was played under a rule the level no longer uses (classic run on a rack level, or the reverse, or a rack longer than the current slots). Stars and carrots are not this function's concern. */
+export function runMatchesRules(run: Run): boolean {
+  const expected = expectedRack(run.level);
+  const rackRun = run.rules === 'rack';
+  if ((expected > 0) !== rackRun) return false;
+  if (rackRun && (run.rack?.length ?? 0) > expected) return false;
+  return true;
 }
 const SHELVES = SHELF_ITEMS;
 /** Type-check every field of a parsed save; never throws. */
@@ -66,7 +100,7 @@ export function sanitize(x: unknown): Save {
   const i = isObj(x) ? x : {}; const s = defaults();
   if (isObj(i.stars)) for (const [k, v] of Object.entries(i.stars)) { const n = Number(k); if (Number.isInteger(n) && n >= 0 && n < ALL_LEVELS.length && typeof v === 'number') { const st = int(v, 0, 0, 3); if (st) s.stars[n] = st; } }
   if (isObj(i.best)) for (const [k, v] of Object.entries(i.best)) { if ((/^\d{1,2}$/.test(k) && +k < 30) || (k[0] === 'd' && isDay(k.slice(1)))) { const b = int(v, -1, 0, 1e7); if (b >= 0) s.best[k] = b; } }
-  s.settings = migrateSettings(i.settings); s.seenHowTo = bool(i.seenHowTo, false); if (i.seenUndo === true) s.seenUndo = true;
+  s.settings = migrateSettings(i.settings); s.seenHowTo = bool(i.seenHowTo, false); if (i.seenUndo === true) s.seenUndo = true; if (i.seenRack === true) s.seenRack = true;
   s.stats = stats(i.stats);
   s.ach = Array.isArray(i.ach) ? [...new Set(i.ach.filter((a): a is string => typeof a === 'string' && ACHIEVEMENTS.some((x) => x.id === a)))] : [];
   s.owned = Array.isArray(i.owned) ? [...new Set(i.owned.filter((o): o is string => { if (typeof o !== 'string') return false; const [sh, id] = o.split(':'); return has(SHELVES, sh) && SHELVES[sh as keyof typeof SHELVES].some((it) => it.id === id && !it.legend); }))] : [];
