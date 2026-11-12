@@ -554,7 +554,9 @@ function glide(el: HTMLElement, from: DOMRect, to: DOMRect) {
   const dx = to.left + to.width / 2 - (from.left + from.width / 2);
   const dy = to.top + to.height / 2 - (from.top + from.height / 2);
   const scale = Math.min(1.15, to.width / Math.max(1, from.width));
-  requestAnimationFrame(() => { el.style.transform = `translate3d(${from.left + dx}px,${from.top + dy}px,0) scale(${scale})`; });
+  const dest = `translate3d(${from.left + dx}px,${from.top + dy}px,0) scale(${scale})`;
+  // Two frames: the first paints the start pose, the second starts the transition.
+  requestAnimationFrame(() => requestAnimationFrame(() => { el.style.transform = dest; }));
 }
 /** Cosmetic only: the tile is already in the slot, so the next tap is never waiting on this. */
 function flyHome(from: DOMRect, kind: string, slotId: number) {
