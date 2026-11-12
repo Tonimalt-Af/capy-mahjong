@@ -2,7 +2,7 @@
 // Mix: music (EP, bass, soft drums, mallet melody; no noise layer) and SFX each go through their own tone-shaping and volume,
 // then a clean trim and a safety limiter (peaks only) so stacked combos never clip. Sub-bass is filtered out of
 // the music: phone speakers cannot reproduce it and turn it into buzz/distortion when the volume is turned up.
-export type Sfx = 'legend' | 'buy' | 'unlock' | 'select' | 'match' | 'invalid' | 'shuffle' | 'hint' | 'win' | 'star' | 'click' | 'lose';
+export type Sfx = 'legend' | 'buy' | 'unlock' | 'select' | 'match' | 'fuse' | 'invalid' | 'shuffle' | 'hint' | 'win' | 'star' | 'click' | 'lose';
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 const rng = (seed: number) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 
@@ -102,6 +102,7 @@ export class Sound {
       case 'select': this.tone(b, 720, t, 0.09, 0.2, 'sine', 0.004, 540); this.burst(b, t, 0.025, 0.025, 1800, 'bandpass', 1); break;
       case 'click': this.tone(b, 620, t, 0.06, 0.13, 'sine', 0.004, 470); break;
       case 'match': { const base = 72 + Math.min(combo, 6) * 2; [0, 7, 12].forEach((iv, i) => { this.tone(b, mtof(base + iv), t + i * 0.06, 0.45, 0.11); this.tone(b, mtof(base + iv) * 2, t + i * 0.06, 0.2, 0.02); }); break; }
+      case 'fuse': { const base = 76 + Math.min(combo, 6) * 2; this.tone(b, mtof(base), t, 0.16, 0.12, 'sine', 0.004, mtof(base + 7)); this.tone(b, mtof(base + 12), t + 0.07, 0.18, 0.07); break; }
       case 'invalid': this.tone(b, 210, t, 0.16, 0.2, 'sine', 0.008, 150); this.tone(b, 420, t, 0.08, 0.04, 'sine', 0.008, 300); break;
       case 'shuffle': { const ctx = this.ctx!; const s = ctx.createBufferSource(); s.buffer = this.noise; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.setValueAtTime(500, t); f.frequency.exponentialRampToValueAtTime(2200, t + 0.35);
         const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.14, t + 0.12); g.gain.linearRampToValueAtTime(0, t + 0.42); s.connect(f).connect(g).connect(b); s.start(t); s.stop(t + 0.45);

@@ -521,8 +521,72 @@ function refresh() {
   else if (rackOn ? !hasRackMove(g.tiles, g.rack, g.level.rack) : !findHint(g.tiles)) setTimeout(() => g && !g.over && noMoves(), 450);
 }
 let comboT = 0;
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPARK = [
+  ['#7FC8B4', '#FFFFFF', '#FFD93B', '#207E82'],
+  ['#E7A98E', '#FFF6E6', '#FF8A3D', '#D96B4A'],
+  ['#8DBF6E', '#FFFFFF', '#3F8F4E', '#C6E6A6'],
+  ['#9DBFE3', '#FFFFFF', '#4B7BC4', '#EAF4FF'],
+  ['#E8B864', '#FFFFFF', '#B9822A', '#FFF1CF'],
+];
+const spark = () => SPARK[g?.level.world ?? 0];
+const CHEER = ['Quel enchaînement', 'Tout en douceur', 'Le capybara approuve', 'Belle série'];
 function pop(x: number, y: number, txt: string) { const e = document.createElement('div'); e.className = 'pop'; e.textContent = txt; e.style.left = `${x}px`; e.style.top = `${y}px`; document.body.appendChild(e); setTimeout(() => e.remove(), 900); }
 function center(t: Tile) { const r = g!.els[t.id].getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
+function noteCombo() {
+  if (!g || g.combo < 2 || g.combo % 2) return;
+  const r = $('g-combo').getBoundingClientRect();
+  pop(r.left + r.width / 2, Math.min(innerHeight - 24, r.bottom + 16), CHEER[(g.combo / 2 - 1) % CHEER.length]);
+}
+function aimMeet(el: HTMLElement, from: DOMRect, toward: DOMRect) {
+  el.style.setProperty('--dx', `${((toward.left + toward.width / 2) - (from.left + from.width / 2)) * 0.46}px`);
+  el.style.setProperty('--dy', `${((toward.top + toward.height / 2) - (from.top + from.height / 2)) * 0.46}px`);
+  el.classList.add('meet');
+}
+function flyer(from: DOMRect, kind: string) {
+  const el = document.createElement('div'); el.className = 'flyer';
+  el.innerHTML = `<svg viewBox="0 0 100 130"><use href="#k-${kind}"/></svg>`;
+  el.style.width = `${from.width}px`; el.style.height = `${from.height}px`;
+  el.style.transform = `translate3d(${from.left}px,${from.top}px,0)`;
+  document.body.appendChild(el); return el;
+}
+function glide(el: HTMLElement, from: DOMRect, to: DOMRect) {
+  const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+  const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+  const scale = Math.min(1.15, to.width / Math.max(1, from.width));
+  requestAnimationFrame(() => { el.style.transform = `translate3d(${from.left + dx}px,${from.top + dy}px,0) scale(${scale})`; });
+}
+/** Cosmetic only: the tile is already in the slot, so the next tap is never waiting on this. */
+function flyHome(from: DOMRect, kind: string, slotId: number) {
+  if (calm()) return;
+  const el = flyer(from, kind);
+  const slot = document.querySelector(`.rack-slot[data-id="${slotId}"]`) as HTMLElement | null;
+  if (!slot) { el.remove(); return; }
+  slot.classList.add('arriving');
+  glide(el, from, slot.getBoundingClientRect());
+  const land = () => { if (!el.isConnected) return; el.remove(); slot.classList.remove('arriving'); };
+  el.addEventListener('transitionend', (ev) => { if (ev.propertyName === 'transform') land(); });
+  setTimeout(land, 320);
+}
+function fuseAt(from: DOMRect, kind: string, slot: DOMRect, held: string) {
+  if (calm()) return;
+  const ghost = flyer(slot, held);
+  const el = flyer(from, kind);
+  glide(el, from, slot);
+  const land = () => {
+    if (!el.isConnected || el.classList.contains('fuse')) return;
+    el.classList.add('fuse'); ghost.classList.add('fuse');
+    fx.burst(slot.left + slot.width / 2, slot.top + slot.height / 2, 18, spark());
+    setTimeout(() => { el.remove(); ghost.remove(); }, 180);
+  };
+  el.addEventListener('transitionend', (ev) => { if (ev.propertyName === 'transform') land(); });
+  setTimeout(land, 320);
+}
+function rackPulse() { const host = $('g-rack'); host.classList.remove('tight'); void host.offsetWidth; host.classList.add('tight'); }
+function markReturn(ids: number[]) {
+  if (calm() || !g) return;
+  for (const id of ids) { const el = g.els[id]; if (!el) continue; el.classList.remove('return'); void el.offsetWidth; el.classList.add('return'); }
+}
 function tap(t: Tile) {
   if (!g || g.over || g.pausedAt || t.removed) return;
   if ((g.level.rack ?? 0) > 0) { tapRackTile(t); return; }
@@ -532,14 +596,17 @@ function tap(t: Tile) {
   if (g.sel === t) { g.sel = null; snd.play('click'); }
   else if (g.sel && matches(g.sel.kind, t.kind)) {
     const a = g.sel; const now = Date.now(); g.combo = now - g.lastMatch < 4000 ? g.combo + 1 : 0; g.lastMatch = now;
+    const ea = g.els[a.id], eb = g.els[t.id]; const ra = ea.getBoundingClientRect(), rb = eb.getBoundingClientRect();
+    if (!calm()) { aimMeet(ea, ra, rb); aimMeet(eb, rb, ra); }
     a.removed = t.removed = true; g.history.push([a.id, t.id]); g.sel = null;
     g.score += 100 + Math.min(g.combo, 5) * 25;
     const gain = 100 + Math.min(g.combo, 5) * 25; g.maxCombo = Math.max(g.maxCombo, g.combo + 1);
-    const [ax, ay] = center(a), [bx, by] = center(t); fx.burst(ax, ay, 12 + g.combo * 2); fx.burst(bx, by, 12 + g.combo * 2);
+    const [ax, ay] = center(a), [bx, by] = center(t); if (!calm()) { fx.burst(ax, ay, 12 + g.combo * 2, spark()); fx.burst(bx, by, 12 + g.combo * 2, spark()); }
     pop((ax + bx) / 2, Math.min(ay, by) - 10, `+${gain}`);
     if (a.kind === 'capydindon') { legendFound(ax, ay, bx, by); earnUndo((ax + bx) / 2, Math.min(ay, by)); } else { snd.play('match', g.combo); buzz(12); }
     if (g.combo === 3) earnUndo((ax + bx) / 2, Math.min(ay, by));
     const cb = $('g-combo'); if (g.combo >= 1) { cb.textContent = `Combo ×${g.combo + 1}`; cb.classList.remove('show', 'bump'); void cb.offsetWidth; cb.classList.add('show', 'bump'); clearTimeout(comboT); comboT = window.setTimeout(() => cb.classList.remove('show'), 4000); }
+    noteCombo();
   } else { if (g.sel) snd.play('select'); else snd.play('select'); g.sel = t; }
   refresh();
 }
@@ -553,19 +620,32 @@ function tapRackTile(t: Tile) {
     else if (res.reason === 'blocked') toast(S.stats.won < 3 ? 'Tuile bloquée : il lui faut un côté libre (gauche ou droite) et rien dessus' : 'Tuile bloquée', S.stats.won < 3 ? 2600 : 1500);
     return;
   }
+  const from = g.els[t.id].getBoundingClientRect();
+  const slotEl = res.action.type === 'match' ? document.querySelector(`.rack-slot[data-id="${res.action.removed[0]}"]`) as HTMLElement | null : null;
+  const slotRect = slotEl?.getBoundingClientRect();
   g.rack = res.action.rackAfter;
-  if (res.action.type === 'take') { g.actions.push(res.action); snd.play('select'); refresh(); return; }
+  if (res.action.type === 'take') {
+    g.actions.push(res.action); snd.play('select'); refresh(); flyHome(from, t.kind, t.id);
+    if (g.rack.length === g.level.rack - 1) rackPulse();
+    return;
+  }
   const now = Date.now(); g.combo = now - g.lastMatch < 4000 ? g.combo + 1 : 0; g.lastMatch = now;
   const gain = 100 + Math.min(g.combo, 5) * 25; g.score += gain; res.action.gain = gain;
   g.maxCombo = Math.max(g.maxCombo, g.combo + 1);
   const [rackId, boardId] = res.action.removed; const a = g.tiles[rackId], b = g.tiles[boardId];
   g.history.push([rackId, boardId]); g.actions.push(res.action);
-  const [ax, ay] = center(a), [bx, by] = center(b); fx.burst(ax, ay, 12 + g.combo * 2); fx.burst(bx, by, 12 + g.combo * 2);
-  pop((ax + bx) / 2, Math.min(ay, by) - 10, `+${gain}`);
-  if (a.kind === 'capydindon') { legendFound(ax, ay, bx, by); res.action.gain += 1000; } else { snd.play('match', g.combo); buzz(12); }
-  if (g.combo === 3) earnUndo((ax + bx) / 2, Math.min(ay, by));
+  const [bx, by] = center(b);
+  const px = slotRect ? slotRect.left + slotRect.width / 2 : bx;
+  const py = slotRect ? slotRect.top + slotRect.height / 2 : by;
+  pop(px, py - 10, `+${gain}`);
+  if (a.kind === 'capydindon') { legendFound(px, py, bx, by); res.action.gain += 1000; } else { snd.play('fuse', g.combo); buzz(12); }
+  if (g.combo === 3) earnUndo(px, py);
   const cb = $('g-combo'); if (g.combo >= 1) { cb.textContent = `Combo ×${g.combo + 1}`; cb.classList.remove('show', 'bump'); void cb.offsetWidth; cb.classList.add('show', 'bump'); clearTimeout(comboT); comboT = window.setTimeout(() => cb.classList.remove('show'), 4000); }
+  noteCombo();
+  const emptied = g.rack.length === 0 && res.action.rackBefore.length > 0;
   refresh();
+  if (slotRect) fuseAt(from, b.kind, slotRect, a.kind);
+  if (emptied && g.tiles.some((x) => !x.removed)) { const r = $('g-rack').getBoundingClientRect(); pop(r.left + r.width / 2, r.bottom + 10, 'Le haut est libre'); }
 }
 board.addEventListener('pointerdown', (e) => { const d = (e.target as HTMLElement).closest('.tile') as HTMLElement | null; if (d && g) { e.preventDefault(); tap(g.tiles[+d.dataset.id!]); } });
 $('g-rack').addEventListener('pointerdown', (e) => {
@@ -601,9 +681,10 @@ function doUndo() {
     const a = undoRack(g.tiles, g.actions); if (!a) return;
     g.undos++; g.idle = Date.now(); g.rack = a.rackBefore.slice(); g.score = Math.max(0, g.score - a.gain);
     if (a.type === 'match') { g.history.pop(); g.combo = 0; }
-    snd.play('click'); closeOv(); release(); refresh(); legendChip(); return;
+    const back = a.type === 'take' ? [a.rackAfter[a.rackAfter.length - 1]] : a.removed;
+    snd.play('click'); closeOv(); release(); refresh(); markReturn(back); legendChip(); return;
   }
-  if (!g.history.length) return; if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; } const x = g.history.pop(); if (!x) return; g.undos++; g.idle = Date.now(); g.tiles[x[0]].removed = g.tiles[x[1]].removed = false; g.sel = null; g.score = Math.max(0, g.score - 100); g.combo = 0; snd.play('click'); closeOv(); release(); refresh();
+  if (!g.history.length) return; if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; } const x = g.history.pop(); if (!x) return; g.undos++; g.idle = Date.now(); g.tiles[x[0]].removed = g.tiles[x[1]].removed = false; g.sel = null; g.score = Math.max(0, g.score - 100); g.combo = 0; snd.play('click'); closeOv(); release(); refresh(); markReturn(x);
 }
 /** Stop the clock while an end-of-moves card is up; release() restarts it. */
 function hold() { if (g && !g.pausedAt) g.pausedAt = Date.now(); }
@@ -719,7 +800,10 @@ function win() {
   const legendWin = g.legends > 0; const firstLegend = g.legends > 0 && S.stats.legends === 1 && !S.owned.includes('o:capydindon'); if (firstLegend) { S.owned.push('o:capydindon'); persist(); }
   const outs = firstLegend ? [OUTFITS.find((o) => o.id === 'capydindon')!] : [];
   if (got.length || outs.length || secretNews) extra = `<div class="unlocks">${secretNews ? `<div class="unl secret">${capySvg(WORLDS[secretNews.world].mascot)}<span>Niveau secret ouvert<br><b>${secretNews.name}</b></span></div>` : ''}${outs.map((o) => `<div class="unl leg">${capySvg(o.id)}<span>Tenue légendaire<br><b>${o.name}</b></span></div>`).join('')}${got.slice(0, 3 - outs.length - (secretNews ? 1 : 0)).map((id) => { const a = ACHIEVEMENTS.find((x) => x.id === id)!; return `<div class="unl ach">${capySvg(a.icon)}<span>Succès<br><b>${a.name}</b></span></div>`; }).join('')}${got.length + outs.length > 3 ? `<div class="unl more">+${got.length + outs.length - 3} succès</div>` : ''}</div>`;
-  snd.play('win'); fx.confetti(); buzz(40);
+  const worldDone = mode === 'level' && !lv.secret && lv.index === 5;
+  if (worldDone) { const here = WORLDS[lv.world].name; const nxt = WORLDS[lv.world + 1]; tip = `${tip} Monde terminé : ${here}.${nxt ? ` Ensuite : ${nxt.name}.` : ''}`; }
+  const noUndo = g.undos === 0 && mode !== 'zen';
+  snd.play('win'); fx.confetti(worldDone ? spark() : undefined); buzz(40);
   const stTxt = '⭐'.repeat(st) + '☆'.repeat(3 - st); const L = LAYOUTS[lv.layout].name;
   const [shTxt, shUrl] = mode === 'daily' ? [`Mahjong Capybaras 🦫 · Défi du ${frDate(lv.date!)}${lv.late ? ' (rattrapé)' : ''}\n${stTxt} en ${fmt(t)} · 💡 ${pl(g.hints, 'indice')}\n${lv.late ? '📅 Rattrapé depuis le calendrier' : `🔥 Série de ${pl(S.stats.dailyStreak, 'jour')}`}${legendWin ? ' · 🦃 capydindon doré trouvé !' : ''}`, lv.late ? `${base()}?mode=daily&day=${lv.date}` : `${base()}?mode=daily`]
     : mode === 'level' ? [`J'ai fini « ${lv.name ?? L} » (${isSecret(lv.n) ? 'niveau secret' : `niveau ${lv.n + 1}`}) de Mahjong Capybaras en ${fmt(t)} ${stTxt}. À toi de battre mon temps !`, `${base()}?level=${lv.n}`]
@@ -734,10 +818,10 @@ function win() {
   setTimeout(() => {
     openOv(`<div class="ribbon">${ribbon}</div><div class="capy-s win">${capySvg(mode === 'zen' ? 'lotus' : S.outfit === 'agrume' ? 'couronne' : S.outfit)}</div>
       ${mode === 'zen' ? '' : `<div class="bigstars">${[0, 1, 2].map((k) => STAR(k < st, `s${k}`)).join('')}</div>`}
-      ${statsRow}<div class="earn">${CARROT()}<b>+${gain}</b> ${gain > 1 ? 'carottes' : 'carotte'}${legendWin ? ' <span class="legtag">capydindon +25</span>' : ''}${aff ? `<button class="afford" id="w-shop">De quoi t'offrir : ${aff[1].name}</button>` : ''}</div>${rec && prev ? '<p class="rec">Nouveau record !</p>' : ''}${extra}
+      ${statsRow}<div class="earn">${CARROT()}<b>+${gain}</b> ${gain > 1 ? 'carottes' : 'carotte'}${legendWin ? ' <span class="legtag">capydindon +25</span>' : ''}${aff ? `<button class="afford" id="w-shop">De quoi t'offrir : ${aff[1].name}</button>` : ''}</div>${noUndo ? '<p class="cheer">Sans annuler. Le capybara est impressionné.</p>' : ''}${rec && prev ? '<p class="rec">Nouveau record !</p>' : ''}${extra}
       <p class="tipline">${tip}</p>
       <div class="row">${mode === 'daily' ? '' : `<button class="iconbtn share" id="w-share" aria-label="Partager mon résultat">${ic('share')}</button>`}<button class="btn" id="w-map">${ic(mode === 'level' ? 'map' : 'home')}<span>${mode === 'level' ? 'Niveaux' : 'Modes'}</span></button>${mode === 'endless' ? '' : `<button class="btn" id="w-retry">${ic('retry')}<span>Rejouer</span></button>`}
-      ${mode === 'daily' ? `<button class="btn ${next ? '' : 'primary'}" id="w-share">${ic('share')}<span>Partager</span></button>` : ''}${next ? `<button class="btn primary" id="w-next">${ic('next')}<span>${next}</span></button>` : ''}</div>`, `win ${extra ? 'has-unl' : ''}`);
+      ${mode === 'daily' ? `<button class="btn ${next ? '' : 'primary'}" id="w-share">${ic('share')}<span>Partager</span></button>` : ''}${next ? `<button class="btn primary" id="w-next">${ic('next')}<span>${next}</span></button>` : ''}</div>`, `win ${worldDone ? 'world' : ''} ${extra ? 'has-unl' : ''}`);
     if (extra) setTimeout(() => snd.play('unlock'), 1300);
     if (mode !== 'zen') [0, 1, 2].forEach((k) => { if (k < st) setTimeout(() => snd.play('star', k), 350 + k * 280); });
     $('w-share').onclick = () => void share(shTxt, shUrl); if ($('w-shop')) $('w-shop').onclick = () => { snd.play('click'); closeOv(); renderColl(shopTab(aff![0])); show('coll'); };

@@ -8,7 +8,7 @@ export class Fx {
     for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 3.5; this.ps.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1.5, life: 0, max: 40 + Math.random() * 25, size: 3 + Math.random() * 5, color: colors[i % colors.length], kind: (i % 3) as 0 | 1 | 2, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3 }); }
     this.run();
   }
-  confetti() { for (let i = 0; i < 120; i++) this.ps.push({ x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.5, vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3, life: 0, max: 200, size: 5 + Math.random() * 5, color: ['#FF8A3D', '#EF4B5F', '#3FAE6A', '#F5B82E', '#2FA4A9', '#FF77B0'][i % 6], kind: 2, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4 }); this.run(); }
+  confetti(colors?: string[]) { const palette = colors ?? ['#FF8A3D', '#EF4B5F', '#3FAE6A', '#F5B82E', '#2FA4A9', '#FF77B0']; for (let i = 0; i < 120; i++) this.ps.push({ x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.5, vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3, life: 0, max: 200, size: 5 + Math.random() * 5, color: palette[i % palette.length], kind: 2, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4 }); this.run(); }
   private run() { if (!this.raf) this.raf = requestAnimationFrame(() => this.frame()); }
   private frame() {
     const c = this.ctx, d = this.dpr; c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, innerWidth, innerHeight);
