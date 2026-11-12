@@ -502,7 +502,7 @@ body[data-rack="1"] #g-pairs{display:none!important}
   /* Stay absolutely filling the screen. `relative` would shrink the grid to the side rail and crush the tiles. */
   body[data-rack="1"] #v-game.active{position:absolute;inset:0}
   body[data-rack="1"] #v-game .hud{position:static}
-  body[data-rack="1"] #g-rack{position:absolute;top:2px;left:88px;right:92px;height:48px;z-index:6;flex:none}
+  body[data-rack="1"] #g-rack{position:absolute;top:0;left:88px;right:92px;height:52px;z-index:6;flex:none}
   body[data-rack="1"] #g-score{display:none!important}
-  body[data-rack="1"] .rack-slot{width:40px;height:46px}
+  body[data-rack="1"] .rack-slot{width:40px;height:52px}
 }

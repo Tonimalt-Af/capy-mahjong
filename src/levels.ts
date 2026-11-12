@@ -65,7 +65,7 @@ export const SECRET_STARS = 15;
 // Audit 2026-10-30: all levels re-seeded with the smart-bot simulation (src/sim.ts, random shuffles, 8% capydindon) for a
 // smooth curve: bot clear rate ≈ 98% (L1) → ≈ 82% (L30), no spikes (L8 kept: soft-lock repro). Phase 3: re-seeded for the new
 // boards (L11 and L15 hide a capydindon); seeds 31–35 are the secret levels, each as hard as its world's last level.
-export const SEEDS: number[] = [2200000,8001301,2201800,2205477,8017506,8031109,5859577,70859,7150570,8799024,9736811,10715713,11689133,12657071,13677088,14590206,15604741,1217152,17504984,18552411,1227622,9166615,4225532,4516869,1630295,24302478,8033826,8115090,8264015,8099239,29161355,30121070,1927324,32240593,8130348];
+export const SEEDS: number[] = [2200000,8001301,2201800,2205477,8017506,8031109,5859577,70859,7150570,8799024,9736811,10715713,11689133,12657071,13677088,14590206,15604741,1217152,17504984,18552411,1227622,9166615,4225532,4516869,1630295,24302478,8033826,8115090,8264015,8099239,29161355,30121070,1927324,9,8130348];
 /** Hints per level: 4 / 3 / 2 in the first worlds, and 2 (not 1) on the big boards of worlds 4–5. */
 export const hintBudget = (world: number) => Math.max(2, 4 - world);
 /** Undo budget by world: free while learning (Rivière), then 5, then 3 for the last two worlds. */

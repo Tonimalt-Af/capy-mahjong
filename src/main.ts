@@ -1,7 +1,7 @@
 import '@fontsource/fredoka/latin-400.css'; import '@fontsource/fredoka/latin-600.css'; import '@fontsource/fredoka/latin-700.css';
 import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
-import { deal, isFree, matches, findHint, reshuffle, clearable, type Tile } from './engine';
+import { deal, isFree, matches, findHint, freeTiles, reshuffle, clearable, type Tile } from './engine';
 import { fitUnit, RACK_BAND } from './fit';
 import { applyRackTap, boardTiles, hasRackMove, rackBoardDead, rackHint, rackShufflePossible, rackWon, reshuffleRack, slotLabel, undoRack, type RackAction } from './rack';
 import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
@@ -611,7 +611,8 @@ function release() { if (g && g.pausedAt) { g.paused += Date.now() - g.pausedAt;
 function showRackHint(h: NonNullable<ReturnType<typeof rackHint>>, cls: 'hint' | 'nudge') {
   if (!g) return;
   if (h.kind === 'match') { g.els[h.boardId].classList.add(cls); document.querySelector(`.rack-slot[data-id="${h.rackId}"]`)?.classList.add(cls); }
-  else h.ids.forEach((id) => g!.els[id].classList.add(cls));
+  else if (h.kind === 'pair') h.ids.forEach((id) => g!.els[id].classList.add(cls));
+  else g.els[h.id].classList.add(cls);
 }
 function nudgeRack() { if (!g) return; const h = rackHint(g.tiles, g.rack, g.level.rack); if (h) showRackHint(h, 'nudge'); }
 function doHint() {
@@ -631,6 +632,13 @@ function doShuffle() {
 }
 $('g-hint').onclick = doHint; $('g-undo').onclick = doUndo; $('g-shuf').onclick = doShuffle; $('g-pause').onclick = () => pause();
 addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && $('ov').classList.contains('show')) {
+    const items = ovFocusable();
+    if (!items.length) { e.preventDefault(); return; }
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    const n = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i < 0 || i >= items.length - 1 ? 0 : i + 1);
+    e.preventDefault(); items[n].focus(); return;
+  }
   // Home and menus have no game shortcut handler. Escape still dismisses the open card.
   if (e.key === 'Escape' && (view !== 'game' || !g)) { if ($('ov').classList.contains('show')) closeOv(); return; }
   if (view !== 'game' || !g) return;
@@ -650,8 +658,21 @@ const portraitPause = () => { if (portrait.matches && view === 'game' && g && !g
 portrait.addEventListener?.('change', portraitPause);
 
 // ---------- overlays
-function openOv(html: string, cls = '') { const c = $('card'); c.className = `card ${cls}`; c.innerHTML = html; $('ov').classList.add('show'); }
-function closeOv() { $('ov').classList.remove('show'); }
+let ovReturn: HTMLElement | null = null;
+function ovFocusable(): HTMLElement[] {
+  return [...$('card').querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((el) => !el.hasAttribute('disabled') && el.tabIndex >= 0 && el.getClientRects().length > 0);
+}
+function openOv(html: string, cls = '') {
+  const ov = $('ov');
+  if (!ov.classList.contains('show')) { const cur = document.activeElement; ovReturn = cur instanceof HTMLElement ? cur : null; }
+  const c = $('card'); c.className = `card ${cls}`; c.innerHTML = html; ov.classList.add('show');
+  requestAnimationFrame(() => ovFocusable()[0]?.focus());
+}
+function closeOv() {
+  const ov = $('ov'); if (!ov.classList.contains('show')) return;
+  ov.classList.remove('show'); const back = ovReturn; ovReturn = null;
+  if (back?.isConnected) back.focus();
+}
 function pause() {
   if (!g || g.over) return; if (!g.pausedAt) g.pausedAt = Date.now();
   openOv(`<h2>Pause</h2><p class="ptitle">${g.level.mode === 'level' ? `${lvTag(g.level.n)} · ${g.level.name ?? ''} · ${WORLDS[g.level.world].name}` : esc(g.level.title)}</p><div class="capy-s">${capySvg('lunettes')}</div><div class="col">
@@ -824,10 +845,10 @@ function howTo(then?: () => void) {
       const h = rackHint(g.tiles, g.rack, slots);
       if (h?.kind === 'match') { tap(g.tiles[h.boardId]); continue; }
       if (h?.kind === 'pair') { tap(g.tiles[h.ids[0]]); tap(g.tiles[h.ids[1]]); continue; }
+      if (h?.kind === 'take') { tap(g.tiles[h.id]); continue; }
       const on = boardTiles(g.tiles, g.rack);
-      const free = on.find((t) => isFree(t, on) && on.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)))
-        ?? on.find((t) => isFree(t, on));
-      if (!free) return; tap(free);
+      const free = freeTiles(on).slice().sort((a, b) => b.z - a.z)[0];
+      if (!free || g.rack.length >= slots) return; tap(free);
     }
   },
   /** Test hook: a full rack and two free tiles that match nothing in it. The stuck card follows. */

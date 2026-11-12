@@ -4,7 +4,8 @@
 // that way — the first board of each rack world (and Onsen's pyramid) stays a breather.
 import { describe, expect, it } from 'vitest';
 import { ALL_LEVELS, LAYOUTS, campaignBury } from '../src/levels';
-import { deal, playRack, type Tile } from '../src/engine';
+import { deal, freeTiles, playRack, type Tile } from '../src/engine';
+import { boardTiles, hasRackMove, rackHint } from '../src/rack';
 import { buryDeal, BURY_RATE, generatedBury, zenLevel, endlessLevel } from '../src/meta';
 
 function lockedGroups(tiles: Tile[]): number {
@@ -36,13 +37,15 @@ describe('rack is required on most boards', () => {
     for (const row of rows) if (!campaignBury(row.l)) expect(row.needs, row.l.name).toBe(false);
   });
   it('a documented majority of each rack world needs the rack, and most do overall', () => {
-    // Onsen: at least 4 of 7. Forêt, Montagne, Temple: at least 5 of 7. Overall: at least 70%.
+    // Onsen: at least 4 of 7. Forêt and Temple: at least 5 of 7. Montagne: 6 of 7
+    // (the frost crystal is a real rack level, not a classic fallback). Overall: at least 70%.
     const need = (world: number, min: number) => {
       const ls = rows.filter((r) => r.l.world === world);
       const got = ls.filter((r) => r.needs).length;
       expect(got, `world ${world + 1}: ${got}/${ls.length}`).toBeGreaterThanOrEqual(min);
     };
-    need(1, 4); need(2, 5); need(3, 5); need(4, 5);
+    need(1, 4); need(2, 5); need(3, 6); need(4, 5);
+    expect(rows.find((r) => r.l.name === 'Le cristal de givre')!.needs).toBe(true);
     expect(rows.filter((r) => r.needs).length / rows.length).toBeGreaterThanOrEqual(0.7);
   });
   it('the temple forces at least as much storage as the onsen, on a smaller rack', () => {
@@ -80,6 +83,35 @@ describe('generated rack boards usually need the rack, without rejecting the res
     }
     expect(buried / N).toBeGreaterThan(0.45);
     expect(buried / N).toBeLessThan(0.98);
+  });
+  it('the guided line finishes an endless round, including a buried cabin', () => {
+    const guided = (tiles: Tile[], slots: number) => {
+      const live = tiles.map((t) => ({ ...t }));
+      const rack: number[] = [];
+      for (let step = 0; step < tiles.length * 3; step++) {
+        if (live.every((t) => t.removed)) return true;
+        if (!hasRackMove(live, rack, slots)) return false;
+        const h = rackHint(live, rack, slots);
+        if (h?.kind === 'match') {
+          const id = h.rackId; live[h.boardId].removed = true; live[id].removed = true; rack.splice(rack.indexOf(id), 1); continue;
+        }
+        if (h?.kind === 'pair') { live[h.ids[0]].removed = live[h.ids[1]].removed = true; continue; }
+        if (h?.kind === 'take') { rack.push(h.id); continue; }
+        const free = freeTiles(boardTiles(live, rack)).sort((a, b) => b.z - a.z)[0];
+        if (!free || rack.length >= slots) return false;
+        rack.push(free.id);
+      }
+      return false;
+    };
+    const cabin = deal(LAYOUTS.cabane.make(), 1007154594, 0.1, 5, true);
+    expect(cabin.needsRack).toBe(true);
+    expect(guided(cabin.tiles, 5), 'cabane').toBe(true);
+    for (const seed of [1, 42]) for (let round = 2; round < 16; round++) {
+      const l = endlessLevel(round, seed);
+      const d = deal(LAYOUTS[l.layout].make(), l.seed, l.legend, l.rack, buryDeal(l));
+      if (!d.needsRack) continue;
+      expect(guided(d.tiles, l.rack), `${l.title} ${l.layout}`).toBe(true);
+    }
   });
   it('the coin flip is not a reject loop', () => {
     const draws = Array.from({ length: 200 }, (_, i) => generatedBury(i + 1, 0.7));

@@ -1,5 +1,6 @@
 /** Shared board scale. `cols` / `rows` are the half-tile bounding box used by layout(). */
-export const RACK_BAND = 48;
+/** Phone rack band. 52px holds a 40×52 slot. 54px drops the pyramid under 44px tiles. */
+export const RACK_BAND = 52;
 export const PHONE_RAIL = 84;
 
 export function fitUnit(cols: number, rows: number, zMax: number, stageW: number, stageH: number): number {

@@ -88,6 +88,21 @@ test('update toast: "Nouvelle version disponible — Recharger" asks the waiting
   await tap(page, '#upd .btn'); expect(await page.evaluate(() => (window as unknown as { sent: unknown[] }).sent)).toEqual(['skip']);
 });
 
+test('a dialog traps Tab and gives focus back on close', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop');
+  await seed(page); await page.goto('/');
+  await page.locator('#h-help').focus(); await tap(page, '#h-help');
+  await expect(page.locator('#ht-ok')).toBeFocused();
+  await page.keyboard.press('Tab'); await expect(page.locator('#ht-ok')).toBeFocused();
+  await page.keyboard.press('Shift+Tab'); await expect(page.locator('#ht-ok')).toBeFocused();
+  await page.keyboard.press('Escape'); await expect(page.locator('#h-help')).toBeFocused();
+  await page.goto('/?level=0'); await page.locator('#g-pause').focus(); await tap(page, '#g-pause');
+  await expect(page.locator('#p-resume')).toBeFocused();
+  await page.keyboard.press('Shift+Tab'); await expect(page.locator('#p-map')).toBeFocused();
+  await page.keyboard.press('Tab'); await expect(page.locator('#p-resume')).toBeFocused();
+  await page.keyboard.press('Escape'); await expect(page.locator('#g-pause')).toBeFocused();
+});
+
 test('keyboard: free tiles are focusable, Enter selects, P pauses', async ({ page }) => {
   test.skip(test.info().project.name !== 'desktop');
   await seed(page, { stars: { 0: 1, 1: 1, 2: 1 } }); await page.goto('/?level=3');

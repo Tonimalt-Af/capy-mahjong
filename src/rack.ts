@@ -59,19 +59,24 @@ export function hasRackMove(tiles: Tile[], rack: readonly number[], slots: numbe
   return rack.length < slots && free.length > 0;
 }
 
-/** Hint target. Does not play the move. Null when nothing legal is worth pointing at (a bare take is not hinted). */
+/** Hint target. Does not play the move.
+ * A bare take is hinted only when the tile's mate is directly underneath: that park is what unlocks a buried group.
+ * Parking any other free tile stays unhinted, so a hint never says "store something at random". */
 export function rackHint(tiles: Tile[], rack: readonly number[], slots: number):
   | { kind: 'match'; boardId: number; rackId: number }
   | { kind: 'pair'; ids: [number, number] }
+  | { kind: 'take'; id: number }
   | null {
-  const free = freeTiles(boardTiles(tiles, rack));
+  const board = boardTiles(tiles, rack);
+  const free = freeTiles(board);
   for (const t of free) {
     const mate = mateInRack(tiles, rack, t.kind);
     if (mate !== undefined) return { kind: 'match', boardId: t.id, rackId: mate };
   }
   if (rack.length >= slots) return null;
   for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) if (matches(free[i].kind, free[j].kind)) return { kind: 'pair', ids: [free[i].id, free[j].id] };
-  return null;
+  const buried = free.find((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)));
+  return buried ? { kind: 'take', id: buried.id } : null;
 }
 
 const shuffleArr = <T>(a: T[], r: () => number) => {
