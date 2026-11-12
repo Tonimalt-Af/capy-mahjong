@@ -804,6 +804,7 @@ function win() {
   const worldDone = mode === 'level' && !lv.secret && lv.index === 5;
   if (worldDone) { const here = WORLDS[lv.world].name; const nxt = WORLDS[lv.world + 1]; tip = `${tip} Monde terminé : ${here}.${nxt ? ` Ensuite : ${nxt.name}.` : ''}`; }
   const noUndo = g.undos === 0 && mode !== 'zen';
+  if (noUndo) tip = `Sans annuler. ${tip}`;
   snd.play('win'); fx.confetti(worldDone ? spark() : undefined); buzz(40);
   const stTxt = '⭐'.repeat(st) + '☆'.repeat(3 - st); const L = LAYOUTS[lv.layout].name;
   const [shTxt, shUrl] = mode === 'daily' ? [`Mahjong Capybaras 🦫 · Défi du ${frDate(lv.date!)}${lv.late ? ' (rattrapé)' : ''}\n${stTxt} en ${fmt(t)} · 💡 ${pl(g.hints, 'indice')}\n${lv.late ? '📅 Rattrapé depuis le calendrier' : `🔥 Série de ${pl(S.stats.dailyStreak, 'jour')}`}${legendWin ? ' · 🦃 capydindon doré trouvé !' : ''}`, lv.late ? `${base()}?mode=daily&day=${lv.date}` : `${base()}?mode=daily`]
@@ -819,7 +820,7 @@ function win() {
   setTimeout(() => {
     openOv(`<div class="ribbon">${ribbon}</div><div class="capy-s win">${capySvg(mode === 'zen' ? 'lotus' : S.outfit === 'agrume' ? 'couronne' : S.outfit)}</div>
       ${mode === 'zen' ? '' : `<div class="bigstars">${[0, 1, 2].map((k) => STAR(k < st, `s${k}`)).join('')}</div>`}
-      ${statsRow}<div class="earn">${CARROT()}<b>+${gain}</b> ${gain > 1 ? 'carottes' : 'carotte'}${legendWin ? ' <span class="legtag">capydindon +25</span>' : ''}${aff ? `<button class="afford" id="w-shop">De quoi t'offrir : ${aff[1].name}</button>` : ''}</div>${noUndo ? '<p class="cheer">Sans annuler. Le capybara est impressionné.</p>' : ''}${rec && prev ? '<p class="rec">Nouveau record !</p>' : ''}${extra}
+      ${statsRow}<div class="earn">${CARROT()}<b>+${gain}</b> ${gain > 1 ? 'carottes' : 'carotte'}${legendWin ? ' <span class="legtag">capydindon +25</span>' : ''}${aff ? `<button class="afford" id="w-shop">De quoi t'offrir : ${aff[1].name}</button>` : ''}</div>${rec && prev ? '<p class="rec">Nouveau record !</p>' : ''}${extra}
       <p class="tipline">${tip}</p>
       <div class="row">${mode === 'daily' ? '' : `<button class="iconbtn share" id="w-share" aria-label="Partager mon résultat">${ic('share')}</button>`}<button class="btn" id="w-map">${ic(mode === 'level' ? 'map' : 'home')}<span>${mode === 'level' ? 'Niveaux' : 'Modes'}</span></button>${mode === 'endless' ? '' : `<button class="btn" id="w-retry">${ic('retry')}<span>Rejouer</span></button>`}
       ${mode === 'daily' ? `<button class="btn ${next ? '' : 'primary'}" id="w-share">${ic('share')}<span>Partager</span></button>` : ''}${next ? `<button class="btn primary" id="w-next">${ic('next')}<span>${next}</span></button>` : ''}</div>`, `win ${worldDone ? 'world' : ''} ${extra ? 'has-unl' : ''}`);
