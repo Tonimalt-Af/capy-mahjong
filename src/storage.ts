@@ -1,4 +1,4 @@
-import { NEW_STATS, ACHIEVEMENTS, SHELF_ITEMS, DECOR, hash, DIFFS, type Stats, type Diff, type PlayLevel, type Mode } from './meta';
+import { NEW_STATS, ACHIEVEMENTS, SHELF_ITEMS, DECOR, hash, DIFFS, zenSlots, endlessSlots, type Stats, type Diff, type PlayLevel, type Mode } from './meta';
 import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt } from './levels';
 import { KIND_BY_ID, type Theme } from './tiles';
 import { isDay } from './dates';
@@ -43,12 +43,20 @@ function level(x: unknown): PlayLevel | null {
   if (!isObj(x) || !has(LAYOUTS, x.layout) || !MODES.includes(x.mode as Mode)) return null;
   const mode = x.mode as Mode; const l: PlayLevel = { mode, layout: x.layout, n: int(x.n, -1, -1, ALL_LEVELS.length - 1), world: int(x.world, 0, 0, 4), index: int(x.index, 0, 0, 99), seed: int(x.seed, 1, 0, 2 ** 32 - 1), par: int(x.par, 300, 30, 9999), hints: int(x.hints, 1, 0, 99), shuffles: int(x.shuffles, 1, 0, 99), undos: int(x.undos, -1, -1, 99), legend: typeof x.legend === 'number' && x.legend >= 0 && x.legend <= 1 ? x.legend : 0, rack: 0, title: typeof x.title === 'string' ? x.title.slice(0, 60) : '' };
   if (mode === 'level' && l.n < 0) return null;
-  if (mode === 'level') { l.name = levelAt(l.n).name; l.rack = levelAt(l.n).rack; } // names and the rule come from the campaign, never the save
-  else l.rack = int(x.rack, 0, 0, 12);
+  if (mode === 'level') l.name = levelAt(l.n).name;
   if (mode === 'daily') { if (!isDay(x.date)) return null; l.date = x.date; if (x.late === true) l.late = true; }
   if (mode === 'endless') l.round = int(x.round, 0, 0, 999);
   if (mode === 'zen' || x.diff !== undefined) { const d = DIFFS.find((f) => f.id === x.diff); if (d) l.diff = d.id; else if (mode === 'zen') l.diff = 'moyen'; }
+  l.rack = expectedRack(l);
   return l;
+}
+/** Rack size the rules give this level today. Daily, world 1 and easy zen stay at 0. */
+export function expectedRack(level: PlayLevel): number {
+  if (level.mode === 'daily') return 0;
+  if (level.mode === 'zen') return zenSlots(level.diff);
+  if (level.mode === 'endless') return endlessSlots(level.round ?? 0);
+  if (level.mode === 'level' && level.n >= 0) return levelAt(level.n).rack;
+  return 0;
 }
 function run(x: unknown): Run | null {
   if (!isObj(x)) return null; const lv = level(x.level); if (!lv) return null;
@@ -80,7 +88,7 @@ function run(x: unknown): Run | null {
 const aTrue = (x: unknown) => x === true;
 /** False when a saved game was played under a rule the level no longer uses (classic run on a rack level, or the reverse, or a rack longer than the current slots). Stars and carrots are not this function's concern. */
 export function runMatchesRules(run: Run): boolean {
-  const expected = run.level.mode === 'level' ? levelAt(run.level.n).rack : 0;
+  const expected = expectedRack(run.level);
   const rackRun = run.rules === 'rack';
   if ((expected > 0) !== rackRun) return false;
   if (rackRun && (run.rack?.length ?? 0) > expected) return false;

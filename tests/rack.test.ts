@@ -148,14 +148,20 @@ describe('level 8 leftovers under the rack', () => {
 });
 
 describe('which levels use the rack', () => {
-  it('only world 2 (campaign and its secret) has 6 slots; everything else stays classic', () => {
-    expect(rackSlots(0)).toBe(0); expect(rackSlots(1)).toBe(6); expect([2, 3, 4].map(rackSlots)).toEqual([0, 0, 0]);
+  it('rack sizes follow the design: classic, then 6, 5, 5, 4', () => {
+    expect([0, 1, 2, 3, 4].map(rackSlots)).toEqual([0, 6, 5, 5, 4]);
+    expect(LEVELS.filter((l) => l.world === 0).every((l) => l.rack === 0)).toBe(true);
     expect(LEVELS.filter((l) => l.world === 1).every((l) => l.rack === 6)).toBe(true);
-    expect(LEVELS.filter((l) => l.world !== 1).every((l) => l.rack === 0)).toBe(true);
-    expect(SECRETS.map((l) => l.rack)).toEqual([0, 6, 0, 0, 0]);
+    expect(LEVELS.filter((l) => l.world === 2).every((l) => l.rack === 5)).toBe(true);
+    expect(LEVELS.filter((l) => l.world === 3).every((l) => l.rack === 5)).toBe(true);
+    expect(LEVELS.filter((l) => l.world === 4).every((l) => l.rack === 4)).toBe(true);
+    expect(SECRETS.map((l) => l.rack)).toEqual([0, 6, 5, 5, 4]);
     expect(dailyLevel('2026-11-09').rack).toBe(0);
-    for (const d of ['facile', 'moyen', 'difficile', 'expert'] as const) expect(zenLevel(3, d).rack).toBe(0);
-    for (const r of [0, 2, 8, 14]) expect(endlessLevel(r, 5).rack).toBe(0);
+    expect(zenLevel(3, 'facile').rack).toBe(0);
+    expect(zenLevel(3, 'moyen').rack).toBe(6);
+    expect(zenLevel(3, 'difficile').rack).toBe(5);
+    expect(zenLevel(3, 'expert').rack).toBe(4);
+    expect([0, 1, 2, 7, 8, 13, 14].map((r) => endlessLevel(r, 5).rack)).toEqual([0, 0, 6, 6, 5, 5, 4]);
   });
 
   it('a classic in-progress run on a world-2 level is rejected; stars are not part of that check', () => {

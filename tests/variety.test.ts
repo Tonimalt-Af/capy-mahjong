@@ -4,13 +4,18 @@ import { describe, it, expect } from 'vitest';
 import { LEVELS, LAYOUTS, LEVEL_NAMES, WORLDS, SECRETS, ALL_LEVELS, SECRET_STARS, levelAt } from '../src/levels';
 import { BOARDS } from '../src/boards';
 import { defaults, sanitize, unlocked, worldStars, type Save } from '../src/storage';
-import { deal, isFree, matches } from '../src/engine';
-import { dailyLevel, endlessLevel, zenLevel, ENDLESS_TIERS, DIFFS, LEVEL_LEGEND, DAILY_LEGEND, dayKey, type PlayLevel } from '../src/meta';
+import { deal, isFree, matches, playRack } from '../src/engine';
+import { dailyLevel, endlessLevel, zenLevel, buryDeal, ENDLESS_TIERS, DIFFS, LEVEL_LEGEND, DAILY_LEGEND, dayKey, type PlayLevel } from '../src/meta';
 
-/** Replays the deal's own solution: every step must be a free, matching pair, and the board ends empty. */
-function solvableFromStart(l: Pick<PlayLevel, 'layout' | 'seed' | 'legend'>) {
-  const pos = LAYOUTS[l.layout].make(); const { tiles, solution } = deal(pos, l.seed, l.legend);
-  if (solution.length * 2 !== tiles.length) return false;
+/** Replays the deal: classic pairs when the rule is classic, the rack line otherwise. */
+function solvableFromStart(l: Pick<PlayLevel, 'layout' | 'seed' | 'legend'> & Partial<Pick<PlayLevel, 'rack' | 'mode' | 'n' | 'world' | 'diff' | 'round' | 'secret'>>) {
+  const pos = LAYOUTS[l.layout].make();
+  const rack = l.rack ?? 0;
+  const bury = rack > 0 && (l.mode || l.n !== undefined) ? buryDeal(l as PlayLevel) : false;
+  const dealt = deal(pos, l.seed, l.legend, rack, bury);
+  if (dealt.solution.length * 2 !== dealt.tiles.length) return false;
+  if (dealt.needsRack) { const g = playRack(dealt.tiles, rack); return g.win && g.peak <= rack; }
+  const { tiles, solution } = dealt;
   for (const [a, b] of solution) { const live = tiles.filter((t) => !t.removed); if (!(isFree(tiles[a], live) && isFree(tiles[b], live) && matches(tiles[a].kind, tiles[b].kind))) return false; tiles[a].removed = tiles[b].removed = true; }
   return tiles.every((t) => t.removed);
 }

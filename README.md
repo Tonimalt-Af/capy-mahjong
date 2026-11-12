@@ -5,7 +5,7 @@ Mahjong solitaire kawaii, mobile-first (paysage), 35 niveaux / 5 mondes (dont 5 
 ## Contenu
 - **Campagne** : 30 niveaux, chacun sur son propre plateau thématique (rivière, onsen, forêt, montagne, temple), difficulté progressive (graines calibrées), 3 étoiles par niveau.
 - **Niveaux secrets** : un par monde, ouvert avec 15 étoiles dans ce monde (35 plateaux différents au total).
-- **Modes** : Défi du jour (calendrier + série), Infini (plateaux de plus en plus grands), Zen (4 difficultés : Facile, Moyen, Difficile, Expert).
+- **Modes** : Défi du jour (calendrier + série), Infini (plateaux de plus en plus profonds), Zen (4 difficultés : Facile, Moyen, Difficile, Expert).
 - **Plateaux en forme** : 35 plateaux (nénuphar, canard, lanternes, sapin, bonhomme de neige, torii, pagode, tasse de thé, hérisson…). Tous garantis solubles. Le défi du jour, le Zen et l’Infini puisent dans ces plateaux.
 - **Amis** : chat noir, ourson et le **capydindon légendaire** — une paire dorée rare (garantie dans le défi du jour) : +1000 points, +25 carottes, et sa tenue la première fois.
 - **Carottes** 🥕 : gagnées en jouant (niveaux, défi, infini, zen, succès), dépensées dans la Collection pour des tenues, des jeux de tuiles (Ménagerie, Chats noirs, Oursons) et des fonds de plateau (Nuit étoilée, Sakura, Potiron). Aucun argent réel.

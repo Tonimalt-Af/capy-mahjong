@@ -10,7 +10,7 @@ import { decorSvg } from './decor';
 import { parseDeep } from './deeplink';
 import { Sound, DEFAULT_MUSIC } from './audio';
 import { Fx } from './fx';
-import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, dayKey, frDate, OUTFITS, THEMES, BACKS, EDGES, DECOR, SHELF_ITEMS, onSale, seasonal, firstDayOf, zenShared, zenLink, owns, buy, carrotReward, DIFFS, LEVEL_LEGEND, ACHIEVEMENTS, checkAchievements, type PlayLevel, type Diff, type Item, type Shelf } from './meta';
+import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, dayKey, frDate, OUTFITS, THEMES, BACKS, EDGES, DECOR, SHELF_ITEMS, onSale, seasonal, firstDayOf, zenShared, zenLink, owns, buy, carrotReward, DIFFS, LEVEL_LEGEND, ACHIEVEMENTS, checkAchievements, buryDeal, type PlayLevel, type Diff, type Item, type Shelf } from './meta';
 
 // Boot guard: if anything throws before the home screen is up, show a recovery screen instead of a blank page.
 let booted = false;
@@ -201,7 +201,7 @@ function renderModes() {
   $('v-modes').innerHTML = `<header class="maphead"><button class="iconbtn" id="mo-back" aria-label="Accueil">${ic('back')}</button><h2 class="vtitle">Modes de jeu</h2><div class="hgroup"><button class="btn calbtn" id="mo-cal">${ic('cal')}<span>Calendrier</span></button><div class="chip">🔥 ${streak}</div></div></header>
   <div class="modes">
     <button class="mode daily ${done ? 'done' : ''}" id="mo-daily"><div class="m-art">${capySvg('capydindon')}</div><h3>Défi du jour</h3><p>${d.title.replace('Défi du ', '')} · ${LAYOUTS[d.layout].name} · ${LAYOUTS[d.layout].make().length} tuiles</p><span class="week">${week()}</span><span class="m-tag">${done ? `${ic('check')} Réussi · série ${streak}` : 'Capydindon doré : 1 chance sur 3'}</span><span class="m-go">${ic('play')}Jouer</span></button>
-    <button class="mode endless" id="mo-endless"><div class="m-art">${capySvg('canard')}</div><h3>Infini</h3><p>Des plateaux de plus en plus grands, jusqu'où iras-tu&nbsp;?</p><span class="m-tag">Record : ${S.stats.endlessBest} manche${S.stats.endlessBest > 1 ? 's' : ''}</span><span class="m-go">${ic('play')}Jouer</span></button>
+    <button class="mode endless" id="mo-endless"><div class="m-art">${capySvg('canard')}</div><h3>Infini</h3><p>Des plateaux de plus en plus profonds, jusqu'où iras-tu&nbsp;?</p><span class="m-tag">Record : ${S.stats.endlessBest} manche${S.stats.endlessBest > 1 ? 's' : ''}</span><span class="m-go">${ic('play')}Jouer</span></button>
     <button class="mode zen" id="mo-zen"><div class="m-art">${capySvg('lotus')}</div><h3>Zen</h3><p>Sans chrono, aides illimitées, 4 difficultés et plateaux en forme.</p><span class="m-tag">${S.stats.zenWon} plateau${S.stats.zenWon > 1 ? 'x' : ''} vidé${S.stats.zenWon > 1 ? 's' : ''}</span><span class="m-go">${ic('play')}Jouer</span></button>
   </div>`;
   $('mo-back').onclick = () => { snd.play('click'); renderHome(); show('home'); };
@@ -359,7 +359,7 @@ const elapsed = () => (g ? Math.floor(((g.pausedAt || Date.now()) - g.start - g.
 function startLevel(n: number) { startPlay({ ...levelAt(n), mode: 'level', title: lvTag(n), legend: LEVEL_LEGEND }); }
 function startPlay(level: PlayLevel, resume?: Run) {
   const pos = LAYOUTS[level.layout].make();
-  const { tiles, solution } = deal(pos, level.seed, level.legend);
+  const { tiles, solution } = deal(pos, level.seed, level.legend, level.rack ?? 0, buryDeal(level));
   if (resume) { tiles.forEach((t, i) => { t.kind = resume.kinds[i]; }); for (const id of resume.removed) tiles[id].removed = true; }
   const xs = pos.map((p) => p.x), ys = pos.map((p) => p.y);
   const x0 = Math.min(...xs), y0 = Math.min(...ys);
@@ -793,12 +793,11 @@ function saveCode(back: () => void) {
 function howTo(then?: () => void) {
   const tile = (k: string, cls = '') => `<div class="ht-tile ${cls}"><svg viewBox="0 0 100 130"><use href="#k-${k}"/></svg></div>`;
   const rackCard = unlocked(S, 6) || (!!g && (g.level.rack ?? 0) > 0);
-  // Worlds 3–5 are still classic. The card names Onsen only, until those worlds take the rack (design §5).
   openOv(`<h2>Comment jouer</h2><div class="how">
    <div class="hstep"><div class="hart">${tile('fraise-3')}${tile('fraise-3')}</div><p>Touche deux tuiles identiques pour les retirer.</p></div>
    <div class="hstep"><div class="hart">${tile('agrume-1', 'blk')}${tile('canard')}${tile('agrume-2', 'blk')}</div><p>Une tuile est libre si rien n'est dessus et si son côté gauche ou droit est dégagé.</p></div>
    <div class="hstep"><div class="hart">${tile('printemps')}${tile('hiver')}</div><p>Les saisons vont ensemble, les fleurs aussi. Vide le plateau pour gagner !</p></div>
-   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>À l'Onsen, une tuile libre monte dans le plateau du haut. Touche sa paire pour les retirer. Un plateau du haut plein, sans paire possible, bloque la partie.</p></div>` : ''}</div>
+   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>En dehors de la Rivière, une tuile libre monte dans le plateau du haut. Touche sa paire pour les retirer. Un plateau du haut plein, sans paire possible, bloque la partie.</p></div>` : ''}</div>
    <div class="row"><button class="btn primary" id="ht-ok">${then ? 'C\'est parti !' : 'Compris'}</button></div>`, 'howto');
   $('ht-ok').onclick = () => { S.seenHowTo = true; persist(); closeOv(); then?.(); };
 }
@@ -825,7 +824,10 @@ function howTo(then?: () => void) {
       const h = rackHint(g.tiles, g.rack, slots);
       if (h?.kind === 'match') { tap(g.tiles[h.boardId]); continue; }
       if (h?.kind === 'pair') { tap(g.tiles[h.ids[0]]); tap(g.tiles[h.ids[1]]); continue; }
-      const on = boardTiles(g.tiles, g.rack); const free = on.find((t) => isFree(t, on)); if (!free) return; tap(free);
+      const on = boardTiles(g.tiles, g.rack);
+      const free = on.find((t) => isFree(t, on) && on.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)))
+        ?? on.find((t) => isFree(t, on));
+      if (!free) return; tap(free);
     }
   },
   /** Test hook: a full rack and two free tiles that match nothing in it. The stuck card follows. */

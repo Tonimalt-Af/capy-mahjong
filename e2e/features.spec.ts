@@ -14,8 +14,7 @@ test.afterEach(async ({ page }) => { expect((page as unknown as { errs: string[]
 test('help card limits the rack to Onsen, and Escape closes it', async ({ page }) => {
   await seed(page, OPEN); await page.goto('/');
   await tap(page, '#h-help');
-  await expect(page.locator('.howto')).toContainText('À l\'Onsen');
-  await expect(page.locator('.howto')).not.toContainText('En dehors de la Rivière');
+  await expect(page.locator('.howto')).toContainText('En dehors de la Rivière');
   await page.keyboard.press('Escape');
   await expect(page.locator('#ov')).not.toHaveClass(/show/);
 });

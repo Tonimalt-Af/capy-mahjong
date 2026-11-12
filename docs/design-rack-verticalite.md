@@ -88,9 +88,27 @@ Ces choix sont le contrat. Les variantes écartées sont en fin de section, pour
 4. **Rack plein n’est pas une défaite.** On peut encore taper une tuile libre du plateau qui matche un occupant du rack. La défaite douce n’arrive que lorsqu’aucun coup légal ne reste.
 5. **Le mélange est l’échappatoire, pas une défaite automatique, et il ne touche pas au rack.** Les tuiles déjà montées sont un choix engagé.
 6. **On ne repose pas une tuile en la retapant dans le rack.** La seule marche arrière est Annuler, dans la limite du budget.
-7. **Tous les layouts restent solubles en règle classique.** Le défi du jour, le zen facile et le monde 1 en ont besoin. Le rack est une contrainte en plus, jamais une béquille pour une géométrie impossible.
+7. **La géométrie reste soluble en règle classique.** Un deal sans rack (défi du jour, zen facile, monde 1) trouve toujours une solution. Le rack n’est jamais une béquille pour un plateau dont les cases sont impossibles. Le deal de campagne en rack, lui, cache des groupes entiers dans une colonne : la majorité de ces niveaux ne se finit pas en n’appariant que des tuiles libres. Voir § 3 bis.
 8. **Le défi du jour reste classique pour tout le monde**, y compris les joueurs qui ont déjà le rack en campagne. Sinon le plateau du jour n’aurait plus la même règle pour tous.
 9. **Les budgets d’indices, de mélanges et d’annulations ne changent pas.** La nouvelle difficulté est le rack et la profondeur.
+
+## 3 bis. Le rack fait partie de la difficulté
+
+Ajouter la barre ne suffit pas. Sur un niveau à rack, stocker une tuile doit être le geste qui débloque la suite.
+
+Un groupe est **enfoui** quand ses quatre tuiles occupent la même case, de bas en haut. Une seule est libre à la fois, et sa seule paire est en dessous : le jeu classique ne peut pas la prendre. Le rack la gare, la tuile du dessous se libère, elles partent. Pic d’occupation 1, deux garages forcés par groupe.
+
+Ce n’est pas exigé de chaque niveau. Le premier plateau de chaque monde à rack reste jouable sans rack. L’Onsen en garde un second, la pyramide, sur la graine auditée 70859. Les secrets sont enfouis. Parts verrouillées par `tests/rack-need.test.ts` :
+
+| Ensemble | Part minimale qui exige le rack |
+|---|---|
+| Onsen (6 niveaux + secret) | 4 / 7 |
+| Forêt, Montagne, Temple (chacun) | 5 / 7 |
+| Les 28 niveaux à rack | 70 % |
+
+Le nombre de groupes enfouis visé grandit quand le rack rétrécit : 3 groupes à 6 places, 3 à 5 places, 4 à 4 places. Le bot qui connaît le rack doit quand même garder une courbe douce : au moins 75 % de réussites par niveau, sans remonter de plus de deux points d’un monde à l’autre.
+
+Zen Moyen, Difficile, Expert et Infini à partir de la manche 3 tirent au sort l’enfouissement (environ 75–90 % des graines). On ne rejette pas les graines restantes. Zen Facile, les deux premières manches d’Infini, le monde 1 et le défi du jour ne tirent jamais.
 
 ### Variantes écartées
 
@@ -247,7 +265,7 @@ Plafonds de lecture, pour tous les plateaux redessinés :
 - au plus 4 tuiles sur la même case ;
 - préférer des couches décalées, comme la tortue, à une colonne de 4 tuiles identiques qui se lisent comme une seule ;
 - nombre de tuiles à ±15 % du plateau actuel, pour ne pas casser le rythme des carottes ni le par ;
-- chaque layout reste soluble en règle classique (`assignSolvable` / `clearable`).
+- chaque géométrie reste soluble en règle classique (`assignSolvable` / `clearable`) ; le deal enfoui, lui, ne l’est pas (§ 3 bis).
 
 **Tortue.** On garde la silhouette reconnaissable (15 colonnes, 5 couches, 144 tuiles). On ne l’élargit pas. Sa difficulté de fin de temple vient du rack à 4 et de la pile centrale, pas d’un nouveau rectangle plus large.
 
