@@ -747,7 +747,8 @@ function openOv(html: string, cls = '') {
   const ov = $('ov');
   if (!ov.classList.contains('show')) { const cur = document.activeElement; ovReturn = cur instanceof HTMLElement ? cur : null; }
   const c = $('card'); c.className = `card ${cls}`; c.innerHTML = html; ov.classList.add('show');
-  requestAnimationFrame(() => ovFocusable()[0]?.focus());
+  // Synchronous: a later frame would steal focus from someone who already started typing.
+  if (!c.contains(document.activeElement)) ovFocusable()[0]?.focus();
 }
 function closeOv() {
   const ov = $('ov'); if (!ov.classList.contains('show')) return;
