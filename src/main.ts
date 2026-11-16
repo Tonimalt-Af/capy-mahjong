@@ -8,7 +8,9 @@ import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as st
 import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, runMatchesRules, KEY, CORRUPT_KEY, type Run } from './storage';
 import { decorSvg } from './decor';
 import { parseDeep } from './deeplink';
-import { Sound, DEFAULT_MUSIC } from './audio';
+import { Sound, DEFAULT_MUSIC, type Sfx } from './audio';
+import { isThemeId } from './music/catalog';
+import { themeForContext } from './music/select';
 import { Fx } from './fx';
 import { dailyLevel, endlessLevel, zenLevel, recordDaily, recordLate, missedDays, canReplay, REPLAY_DAYS, liveStreak, dayKey, frDate, OUTFITS, THEMES, BACKS, EDGES, DECOR, SHELF_ITEMS, onSale, seasonal, firstDayOf, zenShared, zenLink, owns, buy, carrotReward, DIFFS, LEVEL_LEGEND, ACHIEVEMENTS, checkAchievements, buryDeal, type PlayLevel, type Diff, type Item, type Shelf } from './meta';
 
@@ -110,13 +112,22 @@ function show(v: string, world = -1) {
   view = v; document.querySelectorAll('.view').forEach((e) => e.classList.toggle('active', e.id === `v-${v}`));
   document.body.dataset.view = v; closeOv();
   if (v !== 'game') delete document.body.dataset.rack;
-  if (world >= 0) setWorld(world);
+  if (world >= 0) setWorld(world); else syncMusic();
 }
-function setWorld(w: number) { const W = WORLDS[w]; document.body.style.setProperty('--w1', W.bg[0]); document.body.style.setProperty('--w2', W.bg[1]); document.body.style.setProperty('--acc', W.accent); document.body.dataset.world = W.id; snd.music(w); }
+function setWorld(w: number) { const W = WORLDS[w]; document.body.style.setProperty('--w1', W.bg[0]); document.body.style.setProperty('--w2', W.bg[1]); document.body.style.setProperty('--acc', W.accent); document.body.dataset.world = W.id; syncMusic(); }
+/** Menu stays on the river theme; the map follows the open world; a game follows its mode (Zen, Infini, daily, campaign). */
+function syncMusic() {
+  const theme = view === 'game' && g
+    ? themeForContext({ screen: 'game', world: g.level.world, mode: g.level.mode, round: g.level.round })
+    : view === 'map'
+      ? themeForContext({ screen: 'map', world: mapWorld })
+      : themeForContext({ screen: 'home' });
+  void snd.playTheme(theme);
+}
 // first user gesture: unlock audio, try fullscreen + landscape lock on touch devices
 let unlockedAudio = false;
 /** Every gesture (re)unlocks audio: iOS only starts or resumes a context inside touchend/click/keydown, and can interrupt it at any time. */
-const gesture = () => { snd.ensure(); if (!unlockedAudio && snd.ctx) { unlockedAudio = true; const w = WORLDS.findIndex((x) => x.id === document.body.dataset.world); snd.music(Math.max(0, w)); } };
+const gesture = () => { snd.ensure(); if (!unlockedAudio && snd.ctx) { unlockedAudio = true; syncMusic(); } };
 for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) addEventListener(ev, gesture, { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && unlockedAudio) snd.ensure(); });
 addEventListener('pageshow', () => { if (unlockedAudio) snd.ensure(); });
@@ -979,6 +990,9 @@ function howTo(then?: () => void) {
   tapPairs: (ps: [number, number][]) => { if (!g) return; for (const [a, b] of ps) { tap(g.tiles[a]); tap(g.tiles[b]); } },
   counters: () => g && { shuffles: g.shuffles, history: g.history.length, paused: !!g.pausedAt },
   audio: () => snd.ctx?.state ?? 'none',
+  music: () => snd.snapshot(),
+  setTheme: (id: string) => { if (isThemeId(id)) void snd.playTheme(id); },
+  sfx: (n: Sfx) => snd.play(n),
 };
 
 // ---------- boot
