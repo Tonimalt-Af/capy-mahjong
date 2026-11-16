@@ -15,11 +15,13 @@ async function render(kind, secs) {
     const M = await import(mod); const SR = 44100; const off = new OfflineAudioContext(2, SR * secs, SR); let T = 0;
     Object.defineProperty(off, 'currentTime', { get: () => T, configurable: true }); off.resume = () => Promise.resolve(); off.suspend = () => Promise.resolve();
     window.AudioContext = function () { return off; };
-    const s = new M.Sound(); if (only === 'bg') for (const k of ['ep', 'bass', 'mallet', 'kick']) s[k] = () => {}; if (mv !== '' && 'musicVol' in s) s.musicVol = +mv; if (sv !== '' && 'sfxVol' in s) s.sfxVol = +sv; s.ensure();
-    if (mv !== '' && s.setVolumes) s.setVolumes(+mv, +sv);
-    if (kind !== 'sfx') { s.music(+world); clearInterval(s.timer); for (T = 0; T < secs; T += 0.1) s.schedule(); }
+    const s = new M.Sound(); s.manual = true; if (mv !== '' && 'musicVol' in s) s.musicVol = +mv; if (sv !== '' && 'sfxVol' in s) s.sfxVol = +sv;
+    const themes = ['riviere', 'onsen', 'foret', 'montagne', 'temple', 'brume'];
+    if (kind !== 'sfx') { await s.preload(); s.ensure(); if (mv !== '' && s.setVolumes) s.setVolumes(+mv, +(sv === '' ? 0.6 : sv)); await s.playTheme(themes[(+world) % themes.length]); for (T = 0; T <= secs; T += 0.05) s.pump(); }
+    else s.ensure();
+    if (mv !== '' && s.setVolumes && kind === 'sfx') s.setVolumes(+mv, +sv);
     if (kind !== 'music') for (const [n, t, c] of SFX) { T = kind === 'mix' ? t + 3 : t; if (T < secs) s.play(n, c ?? 0); }
-    s.stopMusic?.(); clearInterval(s.timer);
+    delete off.currentTime;
     const buf = await off.startRendering(); const L = buf.getChannelData(0), R = buf.getChannelData(1);
     let peak = 0, sum = 0, clip = 0, maxWin = 0; const win = SR * 0.4; let ws = 0;
     for (let i = 0; i < L.length; i++) { const a = Math.max(Math.abs(L[i]), Math.abs(R[i])); if (a > peak) peak = a; if (a >= 1) clip++; const e = (L[i] * L[i] + R[i] * R[i]) / 2; sum += e; ws += e; if (i >= win) { const o = (L[i - win] ** 2 + R[i - win] ** 2) / 2; ws -= o; } if (i >= win && ws / win > maxWin) maxWin = ws / win; }
