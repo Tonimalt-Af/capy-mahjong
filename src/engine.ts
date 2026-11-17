@@ -1,5 +1,8 @@
 import type { Pos } from './layout';
 import { KINDS, KIND_BY_ID } from './tiles';
+import { autoPlan, clearKnot, greedyRack, inferLocks, knotStats, prepareKnot, type KnotId } from './knots';
+
+export { greedyRack, type KnotId } from './knots';
 
 export interface Tile extends Pos { id: number; kind: string; removed: boolean }
 
@@ -65,50 +68,43 @@ export function assignSolvable(positions: Pos[], pairs: [string, string][], r: (
   throw new Error('could not build deal');
 }
 
-function columnsOf(positions: Pos[]): Pos[][] {
-  const m = new Map<string, Pos[]>();
-  for (const p of positions) { const k = `${p.x},${p.y}`; (m.get(k) ?? m.set(k, []).get(k)!).push(p); }
-  for (const c of m.values()) c.sort((a, b) => a.z - b.z);
-  return [...m.values()];
-}
+const FALLBACKS: Record<KnotId, KnotId[]> = {
+  deep4: ['sandwich', 'cross4', 'cross2'],
+  sandwich: ['cross4', 'cross2'],
+  cross4: ['cross2'],
+  cross2: ['cross4'],
+};
 
-/** How many whole groups to hide in a column. A smaller rack hides more, so the slack shrinks. */
-export const buryCount = (slots: number) => (slots >= 6 ? 3 : slots === 5 ? 3 : 4);
-
-function tryBury(positions: Pos[], pairs: [string, string][], r: () => number, want: number) {
-  const pool = shuffleArr(columnsOf(positions).filter((c) => c.length >= 4), r);
-  const used = new Set<Pos>();
-  const kind = new Map<Pos, string>();
-  const locked = new Set<string>();
-  const regular = shuffleArr(KINDS.filter((k) => !k.bonus && !k.legend).map((k) => k.id), r);
-  let ki = 0;
-  for (const c of pool) {
-    if (locked.size >= want) break;
-    const top = c.slice(-4);
-    if (top.some((p) => used.has(p))) continue;
-    const zs = top.map((p) => p.z).sort((a, b) => a - b);
-    if (zs[3] - zs[0] !== 3) continue;
-    const id = regular[ki++]; if (!id) break;
-    for (const p of top) { kind.set(p, id); used.add(p); }
-    locked.add(id);
-  }
-  if (locked.size < 1) return null;
-  const rest = positions.filter((p) => !used.has(p));
-  const remain = pairs.filter(([a, b]) => !locked.has(a) && !locked.has(b));
-  if (remain.length * 2 !== rest.length) return null;
-  let restDeal: { kind: Map<Pos, string> };
-  try { restDeal = assignSolvable(rest, remain, r, 40); } catch { return null; }
-  for (const [p, id] of restDeal.kind) kind.set(p, id);
-  return { kind, locked, forced: locked.size * 2 };
-}
-
-function assignBuried(positions: Pos[], pairs: [string, string][], r: () => number, want: number, slots: number) {
-  for (let n = want; n >= 1; n--) for (let k = 0; k < 8; k++) {
-    const got = tryBury(positions, pairs, r, n);
-    if (!got) continue;
-    const tiles: Tile[] = positions.map((p, i) => ({ ...p, id: i, kind: got.kind.get(p)!, removed: false }));
-    const play = playRack(tiles, slots);
-    if (play.win && play.peak <= slots) return got;
+/** Stamp split knots, then fill the rest with a classic solvable deal. Null when nothing fits. */
+function assignKnots(positions: Pos[], r: () => number, slots: number, plan: readonly KnotId[]) {
+  const softer = FALLBACKS[plan[0]] ?? [];
+  const tries: (readonly KnotId[])[] = [plan, ...softer.map((id) => [id])];
+  for (const attempt of tries) {
+    if (knotStats(attempt).peak > slots) continue;
+    for (let k = 0; k < 18; k++) {
+      const prep = prepareKnot(positions, r, attempt);
+      if (!prep) break;
+      let rest: { kind: Map<Pos, string>; order: [Pos, Pos][] };
+      try { rest = assignSolvable(prep.rest, prep.pairs, r, 20); } catch { continue; }
+      const kind = new Map(prep.kind);
+      for (const [p, id] of rest.kind) kind.set(p, id);
+      const tiles: Tile[] = positions.map((p, i) => ({ ...p, id: i, kind: kind.get(p)!, removed: false }));
+      const trace: number[] = [];
+      const play = clearKnot(tiles, slots, prep.locked, trace);
+      if (!play.win || play.peak !== prep.peak || play.peak > slots) continue;
+      const posId = new Map(positions.map((p, i) => [p, i]));
+      const solution: [number, number][] = [];
+      for (let i = 0; i < trace.length; i += 2) solution.push([trace[i], trace[i + 1] ?? trace[i]]);
+      let restOk = true;
+      for (const [a, b] of rest.order) {
+        const ia = posId.get(a)!, ib = posId.get(b)!;
+        const live = tiles.filter((t) => !t.removed);
+        if (!isFree(tiles[ia], live) || !isFree(tiles[ib], live) || !matches(tiles[ia].kind, tiles[ib].kind)) { restOk = false; break; }
+        tiles[ia].removed = tiles[ib].removed = true;
+        solution.push([ia, ib]);
+      }
+      if (restOk && tiles.every((t) => t.removed)) return { ...prep, kind, solution };
+    }
   }
   return null;
 }
@@ -117,26 +113,33 @@ export interface Deal {
   tiles: Tile[];
   /** Classic removal order when the deal is classically solvable; otherwise the pairs in kind order. */
   solution: [number, number][];
-  /** A whole group sits in one column, so classic play cannot finish. */
+  /** Mates of a kind sit under different columns, so classic play cannot finish. */
   needsRack: boolean;
-  /** Parks whose mate is still buried. 0 when classic play can finish. */
+  /** Parks in the careful line whose mate was still buried. 0 when classic play can finish. */
   forced: number;
+  /** Minimum rack occupancy of a careful winning line, counting the slot the incoming tile needs. */
   peak: number;
+  /** Parks while clearing the buried knots (not the ordinary pair-clears). */
+  parks: number;
+  /** Kind-groups whose mates were split across columns. */
+  groups: number;
 }
 
 /**
- * `slots` 0 is the classic solvable deal. With `bury`, whole groups are stacked in one column
- * so they can only be cleared by parking tiles. The geometry itself stays classically clearable.
+ * `slots` 0 is the classic solvable deal. With `bury`, mates are buried under different
+ * columns so clearing them takes real rack space. The geometry itself stays classically clearable.
+ * `knots`, when passed, is the campaign plan; generated modes pick one that fits the board.
  */
-export function deal(positions: Pos[], seed: number, legendChance = 0, slots = 0, bury = false): Deal {
+export function deal(positions: Pos[], seed: number, legendChance = 0, slots = 0, bury = false, knots?: readonly KnotId[]): Deal {
   const r = rng(seed);
   const all = shuffleArr(deckPairs(144), r).slice(0, positions.length / 2);
-  const buried = slots > 0 && bury ? assignBuried(positions, all, r, buryCount(slots), slots) : null;
+  const plan = slots > 0 && bury ? (knots?.length ? knots : autoPlan(positions.length, slots, r)) : [];
+  const buried = plan.length ? assignKnots(positions, r, slots, plan) : null;
   const classic = buried ? null : assignSolvable(positions, all, r);
   const kind = buried?.kind ?? classic!.kind;
   const tiles: Tile[] = positions.map((p, i) => ({ ...p, id: i, kind: kind.get(p)!, removed: false }));
   const idx = new Map(positions.map((p, i) => [p, i]));
-  const pairs: [number, number][] = buried ? pairsFromKind(tiles) : classic!.order.map(([a, b]) => [idx.get(a)!, idx.get(b)!] as [number, number]);
+  const pairs: [number, number][] = buried?.solution ?? classic!.order.map(([a, b]) => [idx.get(a)!, idx.get(b)!] as [number, number]);
   const lr = rng(seed ^ 0x9e3779b9);
   if (legendChance > 0 && lr() < legendChance && pairs.length > 4) {
     const open = pairs.filter(([a]) => !buried?.locked.has(tiles[a].kind));
@@ -147,7 +150,7 @@ export function deal(positions: Pos[], seed: number, legendChance = 0, slots = 0
       if (buried && !playRack(tiles, slots).win) { tiles[a].kind = prevA; tiles[b].kind = prevB; }
     }
   }
-  return { tiles, solution: pairs, needsRack: !!buried, forced: buried?.forced ?? 0, peak: buried ? 1 : 0 };
+  return { tiles, solution: pairs, needsRack: !!buried, forced: buried?.forced ?? 0, peak: buried?.peak ?? 0, parks: buried?.parks ?? 0, groups: buried?.groups ?? 0 };
 }
 
 function pairsFromKind(tiles: Tile[]): [number, number][] {
@@ -200,15 +203,31 @@ function landLine(tiles: Tile[], slots: number, seed?: number): { win: boolean; 
   return { win: false, peak, forced };
 }
 
-/** Hint-style rack play. Match only when a slot is free for the incoming tile. */
-export function playRack(tiles: Tile[], slots: number): { win: boolean; peak: number; forced: number } {
-  const straight = landLine(tiles, slots);
-  if (straight.win && straight.peak <= slots) return straight;
-  for (let k = 0; k < 24; k++) {
-    const line = landLine(tiles, slots, 9000 + k * 131);
-    if (line.win && line.peak <= slots) return line;
+/** Careful knot first, then the classic remainder. Greedy retries cover a board with no knot. */
+export function playRack(tiles: Tile[], slots: number): { win: boolean; peak: number; forced: number; parks: number } {
+  const live = tiles.map((t) => ({ ...t }));
+  const locked = inferLocks(live);
+  const knot = locked.size ? clearKnot(live, slots, locked) : { win: true, peak: 0, forced: 0, parks: 0 };
+  if (knot.win) {
+    if (live.every((t) => t.removed)) return knot;
+    const finish = (seed?: number) => {
+      const line = landLine(live, slots, seed);
+      if (!line.win || Math.max(knot.peak, line.peak) > slots) return null;
+      return { win: true, peak: Math.max(knot.peak, line.peak), forced: knot.forced, parks: knot.parks };
+    };
+    const straight = finish();
+    if (straight) return straight;
+    for (let k = 0; k < 12; k++) { const line = finish(9000 + k * 131); if (line) return line; }
+    const solved = solve(live);
+    if (solved) return { win: true, peak: Math.max(knot.peak, solved.length ? 2 : 0), forced: knot.forced, parks: knot.parks };
   }
-  return straight;
+  const straight = landLine(tiles, slots);
+  if (straight.win && straight.peak <= slots) return { ...straight, parks: straight.forced };
+  for (let k = 0; k < 16; k++) {
+    const line = landLine(tiles, slots, 9000 + k * 131);
+    if (line.win && line.peak <= slots) return { ...line, parks: line.forced };
+  }
+  return { ...straight, parks: straight.forced };
 }
 
 export function findHint(tiles: Tile[]): [Tile, Tile] | null {

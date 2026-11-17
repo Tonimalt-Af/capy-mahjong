@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LAYOUTS, LEVELS, WORLDS, SECRETS, stars, score } from '../src/levels';
+import { LAYOUTS, LEVELS, WORLDS, SECRETS, campaignKnots, stars, score } from '../src/levels';
 import { deal, isFree, matches, winRate, fairSeed, playRack } from '../src/engine';
 import { buryDeal } from '../src/meta';
 import { phoneTileWidth } from '../src/fit';
@@ -43,7 +43,7 @@ describe('levels', () => {
   it('30 levels in 5 worlds', () => { expect(LEVELS.length).toBe(30); expect(WORLDS.length).toBe(5); });
   it('every level deal is solvable via its built-in solution', () => {
     for (const lv of LEVELS) {
-      const dealt = deal(LAYOUTS[lv.layout].make(), lv.seed, 0.2, lv.rack, buryDeal(lv));
+      const dealt = deal(LAYOUTS[lv.layout].make(), lv.seed, 0.2, lv.rack, buryDeal(lv), campaignKnots(lv));
       expect(dealt.solution.length * 2).toBe(dealt.tiles.length);
       if (dealt.needsRack) expect(playRack(dealt.tiles, lv.rack).win, `L${lv.n + 1}`).toBe(true);
       else { const { tiles, solution } = dealt; for (const [a, b] of solution) { const live = tiles.filter((t) => !t.removed); expect(isFree(tiles[a], live) && isFree(tiles[b], live) && matches(tiles[a].kind, tiles[b].kind)).toBe(true); tiles[a].removed = tiles[b].removed = true; } }

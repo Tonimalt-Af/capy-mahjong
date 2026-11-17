@@ -1,5 +1,6 @@
 // Bot playthroughs used to tune the campaign curve (pure; never imported by the game itself).
-import { deal, freeTiles, matches, reshuffle, rng, type Tile } from './engine';
+import { deal, freeTiles, matches, reshuffle, rng, type Tile, type KnotId } from './engine';
+import { inferLocks, parkOrder } from './knots';
 import { reshuffleRack } from './rack';
 import { KIND_BY_ID } from './tiles';
 import type { Pos } from './layout';
@@ -12,9 +13,10 @@ const holds = (t: Tile, live: Tile[]) => live.reduce((n, o) => n + (o !== t && M
  * otherwise prefers pairs that unblock the most tiles, but slips to a random legal pair `slip` of the time.
  * Uses the level's shuffles when stuck. Returns true when the board is cleared.
  */
-export function smartPlay(positions: Pos[], seed: number, run: number, opts: { legend?: number; shuffles?: number; slip?: number; slots?: number; bury?: boolean } = {}) {
+export function smartPlay(positions: Pos[], seed: number, run: number, opts: { legend?: number; shuffles?: number; slip?: number; slots?: number; bury?: boolean; knots?: readonly KnotId[] } = {}) {
   const slots = opts.slots ?? 0;
-  const { tiles } = deal(positions, seed, opts.legend ?? 0, slots, !!opts.bury); const r = rng(run * 7919 + 13); let shuf = opts.shuffles ?? 0; const slip = opts.slip ?? 0.3;
+  const { tiles } = deal(positions, seed, opts.legend ?? 0, slots, !!opts.bury, opts.knots); const r = rng(run * 7919 + 13); let shuf = opts.shuffles ?? 0; const slip = opts.slip ?? 0.3;
+  const locked = slots > 0 ? inferLocks(tiles) : new Set<string>();
   if (slots > 0) {
     const rack: number[] = [];
     for (let step = 0; step < 800; step++) {
@@ -30,9 +32,9 @@ export function smartPlay(positions: Pos[], seed: number, run: number, opts: { l
       // Keep one slot free so the mate of a parked tile can land.
       if (pairs.length && rack.length < slots - 1) { const pick = r() < slip ? pairs[Math.floor(r() * pairs.length)] : pairs[0]; rack.push(pick[0].id); continue; }
       if (rack.length < slots - 1 && free.length) {
-        const good = free.filter((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)));
-        const careful = good[0] ?? free.slice().sort((a, b) => b.z - a.z)[0];
-        rack.push((r() < slip && free.length > 1 ? free[Math.floor(r() * free.length)] : careful).id);
+        // Planning the park is the puzzle. Slip still applies to which free pair to clear, above.
+        const planned = (locked.size ? parkOrder(tiles, rack, locked)[0] : undefined) ?? parkOrder(tiles, rack)[0] ?? free.slice().sort((a, b) => b.z - a.z)[0];
+        rack.push(planned.id);
         continue;
       }
       if (shuf-- <= 0 || reshuffleRack(tiles, rack, slots, (seed + run * 31 + step) >>> 0) === 'dead') return false;
@@ -52,6 +54,6 @@ export function smartPlay(positions: Pos[], seed: number, run: number, opts: { l
   }
   return false;
 }
-export const smartRate = (positions: Pos[], seed: number, runs = 40, opts: { legend?: number; shuffles?: number; slip?: number; slots?: number; bury?: boolean } = {}) => {
+export const smartRate = (positions: Pos[], seed: number, runs = 40, opts: { legend?: number; shuffles?: number; slip?: number; slots?: number; bury?: boolean; knots?: readonly KnotId[] } = {}) => {
   let ok = 0; for (let k = 0; k < runs; k++) if (smartPlay(positions, seed, k, opts)) ok++; return ok / runs;
 };

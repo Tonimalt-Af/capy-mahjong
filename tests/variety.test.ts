@@ -1,7 +1,7 @@
 // Steering 2026-10-30: deals solvable at start everywhere, level variety + unique names, rarer capydindon.
 // Phase 3: every level (30 + 5 secrets) has its own board, themed per world; bigger daily / zen / endless pools.
 import { describe, it, expect } from 'vitest';
-import { LEVELS, LAYOUTS, LEVEL_NAMES, WORLDS, SECRETS, ALL_LEVELS, SECRET_STARS, levelAt } from '../src/levels';
+import { LEVELS, LAYOUTS, LEVEL_NAMES, WORLDS, SECRETS, ALL_LEVELS, SECRET_STARS, campaignKnots, levelAt } from '../src/levels';
 import { BOARDS } from '../src/boards';
 import { defaults, sanitize, unlocked, worldStars, type Save } from '../src/storage';
 import { deal, isFree, matches, playRack } from '../src/engine';
@@ -12,7 +12,8 @@ function solvableFromStart(l: Pick<PlayLevel, 'layout' | 'seed' | 'legend'> & Pa
   const pos = LAYOUTS[l.layout].make();
   const rack = l.rack ?? 0;
   const bury = rack > 0 && (l.mode || l.n !== undefined) ? buryDeal(l as PlayLevel) : false;
-  const dealt = deal(pos, l.seed, l.legend, rack, bury);
+  const knots = bury && l.n !== undefined && (!l.mode || l.mode === 'level') ? campaignKnots({ n: l.n, world: l.world ?? 0, rack, secret: l.secret, mode: l.mode }) : undefined;
+  const dealt = deal(pos, l.seed, l.legend, rack, bury, knots);
   if (dealt.solution.length * 2 !== dealt.tiles.length) return false;
   if (dealt.needsRack) { const g = playRack(dealt.tiles, rack); return g.win && g.peak <= rack; }
   const { tiles, solution } = dealt;

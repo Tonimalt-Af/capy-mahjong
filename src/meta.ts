@@ -46,7 +46,7 @@ export const zenSlots = (diff?: Diff) => (diff === 'moyen' ? 6 : diff === 'diffi
 /** Endless rack by 0-based round: manches 1–2 classic, 3–8 → 6, 9–14 → 5, then 4.
  * A manche stops when the rack is full: a pair needs a free slot to land. That is the fail state:
  * undo puts the last tile back, a shuffle sends the rack home and deals a clearable board. The deal keeps a guided line
- * (match a free pair, otherwise park the tile whose mate is buried underneath). */
+ * (match a free pair, otherwise park the tile whose mate is buried shallowest, often under another column). */
 export const endlessSlots = (round: number) => (round < 2 ? 0 : round < 8 ? 6 : round < 14 ? 5 : 4);
 /** Share of generated seeds that try to bury a group. Not a reject loop: the rest stay classic. */
 export const BURY_RATE = { moyen: 0.8, difficile: 0.85, expert: 0.9, rack6: 0.75, rack5: 0.8, rack4: 0.85 } as const;
