@@ -137,6 +137,10 @@ body[data-world=temple] .decor .d1{fill:#C9893055}
 .flyer.fuse{animation:fusepop .16s ease-in forwards}
 @keyframes fusepop{40%{scale:1.16}100%{scale:.3;opacity:0}}
 .rack-slot.arriving svg{opacity:0}
+.rack-slot.wobble{animation:rackwobble .3s ease-in-out;transform-origin:50% 82%;z-index:2}
+@keyframes rackwobble{0%,100%{transform:rotate(0)}22%{transform:rotate(-14deg) translateY(-6px)}48%{transform:rotate(12deg) translateY(-2px)}74%{transform:rotate(-8deg) translateY(-3px)}}
+.rack-slot.fusing{animation:fusepop .16s ease-in forwards;z-index:3}
+.tile.flyback{opacity:0}
 #g-rack.tight .rack-slot.empty{animation:tight .4s ease}
 @keyframes tight{40%{box-shadow:inset 0 0 0 3px #E07A3D}}
 .cheer{font-weight:700;color:#2A7F4B;margin:0 0 6px}

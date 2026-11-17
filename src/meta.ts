@@ -44,8 +44,8 @@ export const DIFFS: { id: Diff; name: string; pool: string[]; min: number; desc:
 /** Zen rack by difficulty. Facile stays classic. */
 export const zenSlots = (diff?: Diff) => (diff === 'moyen' ? 6 : diff === 'difficile' ? 5 : diff === 'expert' ? 4 : 0);
 /** Endless rack by 0-based round: manches 1–2 classic, 3–8 → 6, 9–14 → 5, then 4.
- * A manche stops when the rack is full and nothing free matches it. That is the fail state:
- * undo puts the last tile back, a shuffle reopens a move. The deal keeps a guided line
+ * A manche stops when the rack is full: a pair needs a free slot to land. That is the fail state:
+ * undo puts the last tile back, a shuffle sends the rack home and deals a clearable board. The deal keeps a guided line
  * (match a free pair, otherwise park the tile whose mate is buried underneath). */
 export const endlessSlots = (round: number) => (round < 2 ? 0 : round < 8 ? 6 : round < 14 ? 5 : 4);
 /** Share of generated seeds that try to bury a group. Not a reject loop: the rest stay classic. */

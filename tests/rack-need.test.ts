@@ -4,8 +4,7 @@
 // that way — the first board of each rack world (and Onsen's pyramid) stays a breather.
 import { describe, expect, it } from 'vitest';
 import { ALL_LEVELS, LAYOUTS, campaignBury } from '../src/levels';
-import { deal, freeTiles, playRack, type Tile } from '../src/engine';
-import { boardTiles, hasRackMove, rackHint } from '../src/rack';
+import { deal, playRack, type Tile } from '../src/engine';
 import { buryDeal, BURY_RATE, generatedBury, zenLevel, endlessLevel } from '../src/meta';
 
 function lockedGroups(tiles: Tile[]): number {
@@ -85,24 +84,7 @@ describe('generated rack boards usually need the rack, without rejecting the res
     expect(buried / N).toBeLessThan(0.98);
   });
   it('the guided line finishes an endless round, including a buried cabin', () => {
-    const guided = (tiles: Tile[], slots: number) => {
-      const live = tiles.map((t) => ({ ...t }));
-      const rack: number[] = [];
-      for (let step = 0; step < tiles.length * 3; step++) {
-        if (live.every((t) => t.removed)) return true;
-        if (!hasRackMove(live, rack, slots)) return false;
-        const h = rackHint(live, rack, slots);
-        if (h?.kind === 'match') {
-          const id = h.rackId; live[h.boardId].removed = true; live[id].removed = true; rack.splice(rack.indexOf(id), 1); continue;
-        }
-        if (h?.kind === 'pair') { live[h.ids[0]].removed = live[h.ids[1]].removed = true; continue; }
-        if (h?.kind === 'take') { rack.push(h.id); continue; }
-        const free = freeTiles(boardTiles(live, rack)).sort((a, b) => b.z - a.z)[0];
-        if (!free || rack.length >= slots) return false;
-        rack.push(free.id);
-      }
-      return false;
-    };
+    const guided = (tiles: Tile[], slots: number) => playRack(tiles, slots).win;
     const cabin = deal(LAYOUTS.cabane.make(), 1007154594, 0.1, 5, true);
     expect(cabin.needsRack).toBe(true);
     expect(guided(cabin.tiles, 5), 'cabane').toBe(true);

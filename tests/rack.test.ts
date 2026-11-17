@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { deal, isFree, type Tile } from '../src/engine';
+import { deal, isFree, playRack, type Tile } from '../src/engine';
 import { LAYOUTS, LEVELS, SECRETS, rackSlots } from '../src/levels';
 import { dailyLevel, endlessLevel, zenLevel } from '../src/meta';
-import { applyRackTap, hasRackMove, rackHint, rackShufflePossible, rackWon, reshuffleRack, undoRack, type RackAction } from '../src/rack';
+import { applyRackTap, fusionOrder, hasRackMove, rackHint, rackShufflePossible, rackWon, reshuffleRack, undoRack, type RackAction } from '../src/rack';
 import { runMatchesRules, sanitize, type Run } from '../src/storage';
 
 const P = (x: number, y: number, z = 0) => ({ x, y, z });
@@ -22,16 +22,26 @@ describe('rack placement and match', () => {
     expect(isFree(t[0], t.filter((x) => !take.action.rackAfter.includes(x.id)))).toBe(true);
   });
 
-  it('the second tile of a group clears both, even when the rack is full, as one action', () => {
+  it('the second tile lands only when a slot is free, then clears both as one action', () => {
     const t = tiles([{ x: 0, y: 0, kind: 'canard' }, { x: 4, y: 0, kind: 'couronne' }, { x: 8, y: 0, kind: 'canard' }]);
     const rack = [0];
-    const match = applyRackTap(t, rack, 1, 2);
+    const blocked = applyRackTap(t, rack, 1, 2);
+    expect(blocked).toEqual({ ok: false, reason: 'full' });
+    expect(t.every((x) => !x.removed)).toBe(true);
+    expect(hasRackMove(t, rack, 1)).toBe(false);
+    const match = applyRackTap(t, rack, 2, 2);
     expect(match.ok).toBe(true);
     if (!match.ok || match.action.type !== 'match') throw new Error('expected a match');
     expect(t[0].removed && t[2].removed).toBe(true);
     expect(match.action.rackAfter).toEqual([]);
     expect(match.action.removed).toEqual([0, 2]);
+    expect(fusionOrder(rack, 2, 0)).toEqual({ landed: [0, 2], paired: [0, 2] });
     expect(rackWon(t)).toBe(false); // couronne still out
+  });
+
+  it('a fusion slides the incoming tile to sit beside its mate', () => {
+    expect(fusionOrder([0, 1, 2], 4, 0)).toEqual({ landed: [0, 1, 2, 4], paired: [0, 4, 1, 2] });
+    expect(fusionOrder([0, 1, 2], 4, 2)).toEqual({ landed: [0, 1, 2, 4], paired: [0, 1, 2, 4] });
   });
 
   it('seasons match each other inside the rack', () => {
@@ -51,6 +61,7 @@ describe('rack placement and match', () => {
     expect(t.map((x) => x.kind)).toEqual(before);
     expect(t.every((x) => !x.removed)).toBe(true);
     expect(hasRackMove(t, [0, 1], 2)).toBe(false);
+    expect(rackHint(t, [0, 1], 2)).toBeNull();
   });
 
   it('a blocked tile is refused', () => {
@@ -82,20 +93,25 @@ describe('rack undo', () => {
 });
 
 describe('rack shuffle, hint, win and loss', () => {
-  it('shuffle keeps rack faces and moves a buried mate onto a free tile', () => {
+  it('shuffle sends rack tiles back into a solvable board', () => {
     const t = tiles([
       { x: 0, y: 0, kind: 'canard' },
-      { x: 0, y: 0, z: 1, kind: 'couronne' },
+      { x: 0, y: 0, z: 1, kind: 'canard' },
       { x: 6, y: 0, kind: 'lotus' },
-      { x: 10, y: 0, kind: 'canard' },
+      { x: 10, y: 0, kind: 'lotus' },
     ]);
-    const rack = [3];
-    const rackKinds = [t[3].kind];
+    const rack = [1];
     expect(reshuffleRack(t, rack, 6, 7)).toBe('pair');
-    expect(t[3].kind).toBe(rackKinds[0]);
-    const free = [t[1], t[2]].filter((x) => isFree(x, [t[0], t[1], t[2]]));
-    expect(free.some((x) => x.kind === 'canard')).toBe(true);
-    expect(rackHint(t, rack, 6)?.kind).toBe('match');
+    expect(t.every((x) => !x.removed)).toBe(true);
+    expect(playRack(t, 6).win).toBe(true);
+    expect(rackShufflePossible(t, [], 6)).toBe(true);
+  });
+
+  it('a full rack that still has a mate on the board cannot take it', () => {
+    const t = tiles([{ x: 0, y: 0, kind: 'canard' }, { x: 4, y: 0, kind: 'couronne' }, { x: 8, y: 0, kind: 'canard' }]);
+    expect(applyRackTap(t, [0, 1], 2, 2)).toEqual({ ok: false, reason: 'full' });
+    expect(hasRackMove(t, [0, 1], 2)).toBe(false);
+    expect(t[2].removed).toBe(false);
   });
 
   it('a full rack whose groups are absent from the board is dead and unchanged', () => {
