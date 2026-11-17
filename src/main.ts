@@ -4,7 +4,7 @@ import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } fr
 import { deal, isFree, matches, findHint, freeTiles, reshuffle, clearable, type Tile } from './engine';
 import { boardScale, rackSlotSize, RACK_BAND } from './fit';
 import { applyRackTap, boardTiles, fusionOrder, hasRackMove, rackBoardDead, rackHint, rackShufflePossible, rackWon, reshuffleRack, slotLabel, undoRack, type RackAction } from './rack';
-import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
+import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, campaignKnots, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
 import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, runMatchesRules, KEY, CORRUPT_KEY, type Run } from './storage';
 import { decorSvg } from './decor';
 import { parseDeep } from './deeplink';
@@ -376,7 +376,8 @@ function startLevel(n: number) { startPlay({ ...levelAt(n), mode: 'level', title
 function startPlay(level: PlayLevel, resume?: Run) {
   motionGen++; motion = 0; fusePhases.length = 0;
   const pos = LAYOUTS[level.layout].make();
-  const { tiles, solution } = deal(pos, level.seed, level.legend, level.rack ?? 0, buryDeal(level));
+  const bury = buryDeal(level);
+  const { tiles, solution } = deal(pos, level.seed, level.legend, level.rack ?? 0, bury, campaignKnots(level));
   if (resume) { tiles.forEach((t, i) => { t.kind = resume.kinds[i]; }); for (const id of resume.removed) tiles[id].removed = true; }
   const xs = pos.map((p) => p.x), ys = pos.map((p) => p.y);
   const x0 = Math.min(...xs), y0 = Math.min(...ys);
@@ -397,6 +398,7 @@ function startPlay(level: PlayLevel, resume?: Run) {
   $('g-lvl').innerHTML = (level.mode === 'level' ? `<b>${isSecret(level.n) ? '✦' : level.n + 1}</b><span class="ln"> ${level.name ?? LAYOUTS[level.layout].name} · ${WORLDS[level.world].name}</span>` : `<b>${ic(level.mode === 'daily' ? 'cal' : level.mode === 'zen' ? 'leaf' : 'inf')}</b><span class="ln"> ${esc(level.title)}</span>`) + `<span class="ls">${short}</span>`;
   document.body.dataset.mode = level.mode; if (!resume) S.stats.played++;
   if (!resume && (level.undos ?? -1) >= 0 && !S.seenUndo) { S.seenUndo = true; setTimeout(() => toast(`Annulations limitées : ${level.undos} sur ce plateau. Un combo ×4 en redonne une !`), 700); }
+  if (!resume && bury && level.mode === 'level' && level.world === 1 && !S.seenRackPlan) { S.seenRackPlan = true; setTimeout(() => toast('Gare d\'abord la tuile dont la paire est la moins enfouie. Deux ou trois garages précèdent souvent la première fusion.', 4600), 900); }
   persist(); $('g-combo').classList.remove('show');
   show('game', level.world); layout(); refresh();
   clearInterval(timer); timer = window.setInterval(tick, 500); tick(); portraitPause();
@@ -1066,7 +1068,7 @@ function howTo(then?: () => void) {
    <div class="hstep"><div class="hart">${tile('fraise-3')}${tile('fraise-3')}</div><p>Touche deux tuiles identiques pour les retirer.</p></div>
    <div class="hstep"><div class="hart">${tile('agrume-1', 'blk')}${tile('canard')}${tile('agrume-2', 'blk')}</div><p>Une tuile est libre si rien n'est dessus et si son côté gauche ou droit est dégagé.</p></div>
    <div class="hstep"><div class="hart">${tile('printemps')}${tile('hiver')}</div><p>Les saisons vont ensemble, les fleurs aussi. Vide le plateau pour gagner !</p></div>
-   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>En dehors de la Rivière, une tuile libre monte dans le plateau du haut. Sa paire a besoin d'une place libre pour la rejoindre, puis elles fusionnent. Un plateau du haut plein bloque la partie.</p></div>` : ''}</div>
+   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>En dehors de la Rivière, une tuile libre monte dans le plateau du haut. Sa paire a besoin d'une place libre pour la rejoindre, puis elles fusionnent. Si cette paire est cachée sous une autre colonne, gare d'abord les tuiles qui la couvrent : deux ou trois garages précèdent parfois la première fusion. Un plateau du haut plein bloque la partie.</p></div>` : ''}</div>
    <div class="row"><button class="btn primary" id="ht-ok">${then ? 'C\'est parti !' : 'Compris'}</button></div>`, 'howto');
   $('ht-ok').onclick = () => { S.seenHowTo = true; persist(); closeOv(); then?.(); };
 }
