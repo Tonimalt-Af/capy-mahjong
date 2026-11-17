@@ -24,17 +24,19 @@ export function smartPlay(positions: Pos[], seed: number, run: number, opts: { l
       const free = freeTiles(board);
       const mate = (kind: string) => rack.find((id) => matches(tiles[id].kind, kind));
       const hits = free.filter((f) => mate(f.kind) !== undefined);
-      if (hits.length) { const hit = r() < slip ? hits[Math.floor(r() * hits.length)] : hits[0]; const id = mate(hit.kind)!; hit.removed = true; tiles[id].removed = true; rack.splice(rack.indexOf(id), 1); continue; }
+      if (hits.length && rack.length < slots) { const hit = r() < slip ? hits[Math.floor(r() * hits.length)] : hits[0]; const id = mate(hit.kind)!; hit.removed = true; tiles[id].removed = true; rack.splice(rack.indexOf(id), 1); continue; }
       const pairs: [Tile, Tile][] = [];
       for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) if (matches(free[i].kind, free[j].kind)) pairs.push([free[i], free[j]]);
-      if (pairs.length && rack.length < slots) { const pick = r() < slip ? pairs[Math.floor(r() * pairs.length)] : pairs[0]; rack.push(pick[0].id); continue; }
-      if (rack.length < slots && free.length) {
+      // Keep one slot free so the mate of a parked tile can land.
+      if (pairs.length && rack.length < slots - 1) { const pick = r() < slip ? pairs[Math.floor(r() * pairs.length)] : pairs[0]; rack.push(pick[0].id); continue; }
+      if (rack.length < slots - 1 && free.length) {
         const good = free.filter((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)));
         const careful = good[0] ?? free.slice().sort((a, b) => b.z - a.z)[0];
         rack.push((r() < slip && free.length > 1 ? free[Math.floor(r() * free.length)] : careful).id);
         continue;
       }
       if (shuf-- <= 0 || reshuffleRack(tiles, rack, slots, (seed + run * 31 + step) >>> 0) === 'dead') return false;
+      rack.length = 0;
     }
     return false;
   }

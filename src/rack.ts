@@ -1,6 +1,6 @@
 // Top-rack rules (design doc §4). Pure: the UI applies the returned action and owns score, combo and budgets.
 // A tile in the rack is not removed — it keeps its cell for undo — and it no longer blocks the board.
-import { clearable, freeTiles, isFree, matches, reshuffle, rng, type Tile } from './engine';
+import { assignSolvable, clearable, freeTiles, isFree, matches, rng, type Tile } from './engine';
 import { KIND_BY_ID } from './tiles';
 
 export interface RackAction {
@@ -33,7 +33,9 @@ export function applyRackTap(tiles: Tile[], rack: readonly number[], slots: numb
   if (!isFree(tile, board)) return { ok: false, reason: 'blocked' };
   const rackBefore = rack.slice();
   const mate = mateInRack(tiles, rack, tile.kind);
+  // The mate keeps its slot. The incoming tile needs a free one to land in before the pair clears.
   if (mate !== undefined) {
+    if (rack.length >= slots) return { ok: false, reason: 'full' };
     const other = tiles[mate];
     tile.removed = true; other.removed = true;
     return { ok: true, action: { type: 'match', rackBefore, rackAfter: rack.filter((i) => i !== mate), removed: [mate, tile.id], gain: 0 } };
@@ -52,11 +54,18 @@ export function undoRack(tiles: Tile[], actions: RackAction[]): RackAction | nul
 
 export const rackWon = (tiles: Tile[]) => tiles.every((t) => t.removed);
 
-/** A legal tap exists: a free board tile matches the rack, or the rack has room and some board tile is free. */
+/** A legal tap exists only while the rack has a free slot and some board tile is free. A pair needs that slot too. */
 export function hasRackMove(tiles: Tile[], rack: readonly number[], slots: number): boolean {
-  const free = freeTiles(boardTiles(tiles, rack));
-  if (free.some((t) => mateInRack(tiles, rack, t.kind) !== undefined)) return true;
-  return rack.length < slots && free.length > 0;
+  return rack.length < slots && freeTiles(boardTiles(tiles, rack)).length > 0;
+}
+
+/** Arrival order, then the same tiles with the incoming one sitting just after its mate. */
+export function fusionOrder(rack: readonly number[], incoming: number, mate: number): { landed: number[]; paired: number[] } {
+  const landed = [...rack, incoming];
+  const paired = landed.filter((id) => id !== incoming);
+  const at = paired.indexOf(mate);
+  paired.splice(Math.max(0, at) + 1, 0, incoming);
+  return { landed, paired };
 }
 
 /** Hint target. Does not play the move.
@@ -69,82 +78,56 @@ export function rackHint(tiles: Tile[], rack: readonly number[], slots: number):
   | null {
   const board = boardTiles(tiles, rack);
   const free = freeTiles(board);
-  for (const t of free) {
-    const mate = mateInRack(tiles, rack, t.kind);
-    if (mate !== undefined) return { kind: 'match', boardId: t.id, rackId: mate };
+  if (rack.length < slots) {
+    for (const t of free) {
+      const mate = mateInRack(tiles, rack, t.kind);
+      if (mate !== undefined) return { kind: 'match', boardId: t.id, rackId: mate };
+    }
   }
-  if (rack.length >= slots) return null;
+  // One free slot can land a mate, not start a new pair: the second tile would have nowhere to sit.
+  if (rack.length >= slots - 1) return null;
   for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) if (matches(free[i].kind, free[j].kind)) return { kind: 'pair', ids: [free[i].id, free[j].id] };
   const buried = free.find((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)));
   return buried ? { kind: 'take', id: buried.id } : null;
 }
 
-const shuffleArr = <T>(a: T[], r: () => number) => {
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a;
-};
-
-/**
- * Board geometry that can never be cleared, counting tiles already in the rack as partners.
- * An odd board is normal: its mates may be waiting in the rack. `clearable` would call that dead.
- */
-function rackGeometryDead(board: Tile[], rackCount: number): boolean {
-  if ((board.length + rackCount) % 2) return true;
-  if (!board.length) return rackCount > 0;
-  const col = new Map<string, number[]>();
-  for (const p of board) { const k = `${p.x},${p.y}`; (col.get(k) ?? col.set(k, []).get(k)!).push(p.z); }
-  for (const zs of col.values()) {
-    const h = zs.length;
-    if (h > board.length - h + rackCount && Math.max(...zs) - Math.min(...zs) === h - 1) return true;
-  }
-  return freeTiles(board).length < 1;
+function pairsOf(live: Tile[]): [string, string][] | null {
+  const byGroup = new Map<string, string[]>();
+  for (const t of live) { const g = KIND_BY_ID.get(t.kind)!.group; (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(t.kind); }
+  const pairs: [string, string][] = [];
+  for (const ks of byGroup.values()) for (let i = 0; i + 1 < ks.length; i += 2) pairs.push([ks[i], ks[i + 1]]);
+  return pairs.length * 2 === live.length ? pairs : null;
 }
 
 /**
- * Reshuffle faces that are still on the board. Rack faces, order and membership stay.
- * Not spent (and not mutated) when it cannot create a legal move.
- * With a non-empty rack and a compatible face somewhere on the board, a free tile ends up wearing that face.
+ * Put every remaining tile back in play — rack tiles included — and deal those faces
+ * into an arrangement that can be cleared. Not spent, and not mutated, when no such
+ * arrangement exists. The caller empties the rack.
  */
-export function reshuffleRack(tiles: Tile[], rack: readonly number[], slots: number, seed: number): 'pair' | 'dead' {
-  if (rack.length === 0) return reshuffle(tiles, seed);
-  const board = boardTiles(tiles, rack);
+export function reshuffleRack(tiles: Tile[], _rack: readonly number[], _slots: number, seed: number): 'pair' | 'dead' {
+  const live = tiles.filter((t) => !t.removed);
+  if (live.length < 2) return 'dead';
   const r = rng(seed);
-  if (rackGeometryDead(board, rack.length)) return 'dead';
-  const free = freeTiles(board);
-  if (free.length < 1) return 'dead';
-  const matchesHeld = (kind: string) => rack.some((id) => matches(tiles[id].kind, kind));
-  const kinds = board.map((t) => t.kind);
-  const compatible = kinds.some(matchesHeld);
-  if (rack.length >= slots && !compatible) return 'dead';
-  const before = kinds.slice();
-  const next = shuffleArr(kinds.slice(), r);
-  board.forEach((t, i) => { t.kind = next[i]; });
-  if (compatible) {
-    const freeNow = freeTiles(board);
-    if (!freeNow.some((t) => matchesHeld(t.kind))) {
-      const donor = board.find((t) => matchesHeld(t.kind) && !freeNow.includes(t));
-      const dest = freeNow[0];
-      if (!donor || !dest) { board.forEach((t, i) => { t.kind = before[i]; }); return 'dead'; }
-      const k = donor.kind; donor.kind = dest.kind; dest.kind = k;
-    }
-  }
+  if (clearable(live, r) === false) return 'dead';
+  const pairs = pairsOf(live);
+  if (!pairs) return 'dead';
+  let next: (string | undefined)[];
+  try { const dealt = assignSolvable(live, pairs, r, 80); next = live.map((t) => dealt.kind.get(t)); } catch { return 'dead'; }
+  if (next.some((k) => !k)) return 'dead';
+  live.forEach((t, i) => { t.kind = next[i]!; });
   return 'pair';
 }
 
-/** True when no arrangement of the remaining faces can clear the board, rack tiles counted as partners. */
-export function rackBoardDead(tiles: Tile[], rack: readonly number[]): boolean {
-  const board = boardTiles(tiles, rack);
-  if (rack.length === 0) return clearable(board) === false;
-  return rackGeometryDead(board, rack.length);
+/** True when the tiles still in play (rack included, they return on a shuffle) can never be cleared. */
+export function rackBoardDead(tiles: Tile[], _rack: readonly number[]): boolean {
+  const live = tiles.filter((t) => !t.removed);
+  return live.length > 0 && clearable(live) === false;
 }
 
-/** Would a shuffle be able to open a move, without touching faces? Used to show or hide the button. */
-export function rackShufflePossible(tiles: Tile[], rack: readonly number[], slots: number): boolean {
-  const board = boardTiles(tiles, rack);
-  if (rack.length === 0) return clearable(board) !== false && freeTiles(board).length >= 2;
-  if (rackGeometryDead(board, rack.length)) return false;
-  if (rack.length >= slots && !board.some((t) => mateInRack(tiles, rack, t.kind) !== undefined)) return false;
-  return freeTiles(board).length > 0;
+/** Would a shuffle be able to reopen a clearable board, without touching faces? */
+export function rackShufflePossible(tiles: Tile[], _rack: readonly number[], _slots: number): boolean {
+  const live = tiles.filter((t) => !t.removed);
+  return live.length >= 2 && clearable(live) !== false;
 }
 
 export const slotLabel = (index: number, slots: number, kind: string | null) =>

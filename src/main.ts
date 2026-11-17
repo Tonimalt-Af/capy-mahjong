@@ -3,7 +3,7 @@ import './style.css';
 import { KINDS, KIND_BY_ID, tileFace, capySvg, backSvg, faceSvg, type Theme } from './tiles';
 import { deal, isFree, matches, findHint, freeTiles, reshuffle, clearable, type Tile } from './engine';
 import { boardScale, rackSlotSize, RACK_BAND } from './fit';
-import { applyRackTap, boardTiles, hasRackMove, rackBoardDead, rackHint, rackShufflePossible, rackWon, reshuffleRack, slotLabel, undoRack, type RackAction } from './rack';
+import { applyRackTap, boardTiles, fusionOrder, hasRackMove, rackBoardDead, rackHint, rackShufflePossible, rackWon, reshuffleRack, slotLabel, undoRack, type RackAction } from './rack';
 import { LAYOUTS, LEVELS, ALL_LEVELS, SECRET_STARS, levelAt, WORLDS, stars as starCount, score as scoreOf, type Level } from './levels';
 import { loadSave, save, reset, unlocked, worldStars, totalStars, exportCode, importCode, runMatchesRules, KEY, CORRUPT_KEY, type Run } from './storage';
 import { decorSvg } from './decor';
@@ -365,10 +365,16 @@ function renderMap(w = mapWorld) {
 const board = $('board'), stage = $('stage');
 interface G { level: PlayLevel; legends: number; hasLegend: boolean; legendSeen: boolean; idle: number; undos: number; undoBonus: number; maxCombo: number; tiles: Tile[]; els: HTMLDivElement[]; sel: Tile | null; history: [number, number][]; rack: number[]; actions: RackAction[]; solution: [number, number][]; start: number; paused: number; pausedAt: number; hints: number; shuffles: number; combo: number; lastMatch: number; score: number; over: boolean; coach: boolean; coachRack: boolean; coachPair: [number, number] | null; coachPairTold: number; rackTold: boolean; bounds: { x0: number; y0: number; cols: number; rows: number } }
 let g: G | null = null; let timer = 0;
+/** Rack flight / wobble / fly-back. Pointer input waits; scripted taps in the same turn still apply. */
+let motionGen = 0; let motion = 0;
+const rackBusy = () => motion > 0;
+const fusePhases: string[] = [];
+const markPhase = (phase: string) => { fusePhases.push(phase); };
 const elapsed = () => (g ? Math.floor(((g.pausedAt || Date.now()) - g.start - g.paused) / 1000) : 0);
 
 function startLevel(n: number) { startPlay({ ...levelAt(n), mode: 'level', title: lvTag(n), legend: LEVEL_LEGEND }); }
 function startPlay(level: PlayLevel, resume?: Run) {
+  motionGen++; motion = 0; fusePhases.length = 0;
   const pos = LAYOUTS[level.layout].make();
   const { tiles, solution } = deal(pos, level.seed, level.legend, level.rack ?? 0, buryDeal(level));
   if (resume) { tiles.forEach((t, i) => { t.kind = resume.kinds[i]; }); for (const id of resume.removed) tiles[id].removed = true; }
@@ -514,20 +520,21 @@ function coach() {
 function coachRack() {
   const game = g; if (!game?.coachRack) return;
   board.querySelectorAll('.coach').forEach((e) => e.classList.remove('coach')); board.querySelector('.hand')?.remove();
-  if (game.actions.some((a) => a.type === 'match')) { game.coachRack = false; toast('Si le plateau du haut se remplit sans paire possible, tu es bloqué. Annuler ou mélanger peut t\'aider.', 4200); return; }
+  if (game.actions.some((a) => a.type === 'match')) { game.coachRack = false; toast('Si le plateau du haut est plein, plus rien ne peut s\'y poser. Annuler ou mélanger peut t\'aider.', 4200); return; }
   if (!game.coachPair) { const h = rackHint(game.tiles, game.rack, game.level.rack); if (h?.kind === 'pair') game.coachPair = h.ids; }
   const pair = game.coachPair;
   const onBoard = boardTiles(game.tiles, game.rack);
   if (!game.rack.length && pair) { pointAt(game.els[pair[0]]); if (!game.coachPairTold) { game.coachPairTold = 1; toast('Touche une tuile libre : elle monte dans le plateau du haut.', 3200); } return; }
   const mate = game.rack.length ? onBoard.find((t) => isFree(t, onBoard) && game.rack.some((id) => matches(game.tiles[id].kind, t.kind))) : undefined;
-  if (mate) { pointAt(game.els[mate.id]); if (game.coachPairTold < 2) { game.coachPairTold = 2; toast('Touche sa paire : elles disparaissent.', 3200); } }
+  if (mate) { pointAt(game.els[mate.id]); if (game.coachPairTold < 2) { game.coachPairTold = 2; toast('Touche sa paire : elle le rejoint, elles vacillent, puis fusionnent.', 3200); } }
 }
-function renderRack() {
+function renderRack(ids?: readonly number[]) {
   const host = $('g-rack'); if (!g) return;
   const slots = g.level.rack ?? 0;
   if (slots <= 0) { host.innerHTML = ''; return; }
+  const row = ids ?? g.rack;
   host.innerHTML = Array.from({ length: slots }, (_, i) => {
-    const id = g!.rack[i];
+    const id = row[i];
     const kind = id === undefined ? null : g!.tiles[id].kind;
     const face = kind ? `<svg viewBox="0 0 100 130"><use href="#k-${kind}"/></svg>` : '';
     return `<div class="rack-slot${kind ? '' : ' empty'}" role="listitem" data-i="${i}" ${id === undefined ? '' : `data-id="${id}"`} aria-label="${esc(slotLabel(i, slots, kind))}">${face}</div>`;
@@ -544,7 +551,7 @@ function refresh() {
     d.classList.toggle('mate', mate);
     if (d.dataset.kind !== t.kind) { d.dataset.kind = t.kind; d.querySelector('use')!.setAttribute('href', `#k-${t.kind}`); d.setAttribute('aria-label', KIND_BY_ID.get(t.kind)!.name); }
   }
-  renderRack();
+  if (!rackBusy()) renderRack();
   const left = g.tiles.filter((t) => !t.removed);
   $('g-pairs').textContent = pl(left.length / 2, 'paire'); $('g-score').textContent = String(g.score);
   const hl = g.level.hints - g.hints, sl = g.level.shuffles - g.shuffles;
@@ -552,9 +559,10 @@ function refresh() {
   ($('g-hint') as HTMLButtonElement).disabled = hl <= 0; ($('g-shuf') as HTMLButtonElement).disabled = sl <= 0; const ul = undoLeft(); $('g-undo-n').textContent = ul === Infinity ? '∞' : String(ul);
   ($('g-undo') as HTMLButtonElement).disabled = (rackOn ? !g.actions.length : !g.history.length) || ul <= 0;
   if (g.over) return;
+  if (rackBusy()) return;
   if (g.coach) coach(); if (g.coachRack) coachRack(); if (left.length) snapshot();
   if (rackOn ? rackWon(g.tiles) : !left.length) win();
-  else if (rackOn ? !hasRackMove(g.tiles, g.rack, g.level.rack) : !findHint(g.tiles)) setTimeout(() => g && !g.over && noMoves(), 450);
+  else if (rackOn ? !hasRackMove(g.tiles, g.rack, g.level.rack) : !findHint(g.tiles)) setTimeout(() => g && !g.over && !rackBusy() && noMoves(), 450);
 }
 let comboT = 0;
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -606,19 +614,110 @@ function flyHome(from: DOMRect, kind: string, slotId: number) {
   el.addEventListener('transitionend', (ev) => { if (ev.propertyName === 'transform') land(); });
   setTimeout(land, 320);
 }
-function fuseAt(from: DOMRect, kind: string, slot: DOMRect, held: string) {
-  if (calm()) return;
-  const ghost = flyer(slot, held);
-  const el = flyer(from, kind);
-  glide(el, from, slot);
-  const land = () => {
-    if (!el.isConnected || el.classList.contains('fuse')) return;
-    el.classList.add('fuse'); ghost.classList.add('fuse');
-    fx.burst(slot.left + slot.width / 2, slot.top + slot.height / 2, 18, spark());
-    setTimeout(() => { el.remove(); ghost.remove(); }, 180);
-  };
-  el.addEventListener('transitionend', (ev) => { if (ev.propertyName === 'transform') land(); });
-  setTimeout(land, 320);
+const wait = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+const twoFrames = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+interface FuseJob { from: DOMRect; incoming: number; mate: number; kind: string; held: string; landed: number[]; paired: number[]; after: number[]; combo: number; legend: boolean; gain: number; emptied: boolean }
+let fusePending: FuseJob | null = null; let fuseCount = 0; let fuseQueued = false;
+function showRackFree() {
+  if (!g || g.over || !g.tiles.some((t) => !t.removed)) return;
+  const r = $('g-rack').getBoundingClientRect();
+  pop(r.left + r.width / 2, r.bottom + 10, 'Le haut est libre');
+}
+function mergeSound(job: FuseJob, x: number, y: number) {
+  if (!g) return;
+  $('g-score').textContent = String(g.score);
+  if (job.legend) {
+    const gold = ['#FFD45C', '#FFF4C2', '#F2A81D', '#FFFFFF', '#E8344E'];
+    fx.burst(x, y, 40, gold); pop(x, y - 34, '+1000'); pop(x, y - 10, `+${Math.max(0, job.gain - 1000)}`);
+    snd.play('legend'); buzz(60); legendChip();
+  } else { fx.burst(x, y, 18, spark()); pop(x, y - 10, `+${job.gain}`); snd.play('fuse', job.combo); buzz(12); }
+}
+function slotCenters() {
+  const m = new Map<number, { x: number; y: number }>();
+  document.querySelectorAll<HTMLElement>('.rack-slot[data-id]').forEach((el) => {
+    const r = el.getBoundingClientRect(); m.set(+el.dataset.id!, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  });
+  return m;
+}
+/** Slide tile faces to `ids` with a transform, so neighbours glide instead of jumping. */
+async function slideRack(ids: number[], gen: number) {
+  if (gen !== motionGen || !g) return;
+  const before = slotCenters();
+  renderRack(ids);
+  const nodes = [...document.querySelectorAll<HTMLElement>('.rack-slot[data-id]')];
+  let any = false;
+  for (const el of nodes) {
+    const b = before.get(+el.dataset.id!); if (!b) continue;
+    const r = el.getBoundingClientRect();
+    const dx = b.x - (r.left + r.width / 2), dy = b.y - (r.top + r.height / 2);
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+    any = true; el.style.transition = 'none'; el.style.transform = `translate(${dx}px,${dy}px)`; el.dataset.slide = '1';
+  }
+  if (!any) return;
+  await twoFrames();
+  if (gen !== motionGen) return;
+  for (const el of nodes) { if (!el.dataset.slide) continue; el.style.transition = 'transform .24s cubic-bezier(.22,.8,.2,1)'; el.style.transform = ''; }
+  await wait(250);
+  for (const el of nodes) { el.style.transition = ''; el.style.transform = ''; delete el.dataset.slide; }
+}
+function finishFuse(job: FuseJob, sound: boolean) {
+  if (!g) return;
+  markPhase('instant');
+  if (sound) mergeSound(job, job.from.left + job.from.width / 2, job.from.top);
+  refresh();
+  if (job.emptied) showRackFree();
+}
+async function runFusion(job: FuseJob, gen: number) {
+  if (gen !== motionGen || !g) return;
+  motion++;
+  ($('g-undo') as HTMLButtonElement).disabled = true; ($('g-shuf') as HTMLButtonElement).disabled = true;
+  try {
+    document.querySelectorAll('.flyer').forEach((el) => el.remove());
+    markPhase('flight');
+    renderRack(job.landed);
+    const slot = document.querySelector(`.rack-slot[data-id="${job.incoming}"]`) as HTMLElement | null;
+    if (slot) slot.classList.add('arriving');
+    const el = flyer(job.from, job.kind);
+    if (slot) glide(el, job.from, slot.getBoundingClientRect());
+    await wait(210);
+    if (el.isConnected) el.remove();
+    slot?.classList.remove('arriving');
+    if (gen !== motionGen || !g) return;
+    markPhase('slide');
+    await slideRack(job.paired, gen);
+    if (gen !== motionGen || !g) return;
+    const pair = [job.mate, job.incoming].map((id) => document.querySelector(`.rack-slot[data-id="${id}"]`) as HTMLElement | null);
+    markPhase(pair.filter(Boolean).length === 2 ? 'wobble' : 'wobble-miss');
+    pair.forEach((node) => { if (!node) return; node.style.transform = ''; node.style.transition = 'none'; node.classList.add('wobble'); });
+    await wait(300);
+    pair.forEach((node) => node?.classList.remove('wobble'));
+    if (gen !== motionGen || !g) return;
+    markPhase('fusing');
+    pair.forEach((node) => node?.classList.add('fusing'));
+    const ra = pair[0]?.getBoundingClientRect(), rb = pair[1]?.getBoundingClientRect();
+    const cx = ra && rb ? (ra.left + ra.width / 2 + rb.left + rb.width / 2) / 2 : job.from.left + job.from.width / 2;
+    const cy = ra && rb ? (ra.top + ra.height / 2 + rb.top + rb.height / 2) / 2 : job.from.top;
+    mergeSound(job, cx, cy);
+    await wait(170);
+    if (gen !== motionGen || !g) return;
+    await slideRack(job.after, gen);
+  } finally {
+    if (gen === motionGen && g) { motion = Math.max(0, motion - 1); refresh(); if (job.emptied) showRackFree(); }
+  }
+}
+function noteFusion(job: FuseJob) {
+  fusePending = job; fuseCount++;
+  if (fuseQueued) return;
+  fuseQueued = true;
+  queueMicrotask(() => {
+    fuseQueued = false;
+    const job = fusePending; const n = fuseCount;
+    fusePending = null; fuseCount = 0;
+    if (!g || !job) return;
+    if (n > 1) { finishFuse(job, false); return; }
+    if (calm()) { finishFuse(job, true); return; }
+    void runFusion(job, motionGen);
+  });
 }
 function rackPulse() { const host = $('g-rack'); host.classList.remove('tight'); void host.offsetWidth; host.classList.add('tight'); }
 function markReturn(ids: number[]) {
@@ -659,8 +758,6 @@ function tapRackTile(t: Tile) {
     return;
   }
   const from = g.els[t.id].getBoundingClientRect();
-  const slotEl = res.action.type === 'match' ? document.querySelector(`.rack-slot[data-id="${res.action.removed[0]}"]`) as HTMLElement | null : null;
-  const slotRect = slotEl?.getBoundingClientRect();
   g.rack = res.action.rackAfter;
   if (res.action.type === 'take') {
     g.actions.push(res.action); snd.play('select'); refresh(); flyHome(from, t.kind, t.id);
@@ -672,21 +769,22 @@ function tapRackTile(t: Tile) {
   g.maxCombo = Math.max(g.maxCombo, g.combo + 1);
   const [rackId, boardId] = res.action.removed; const a = g.tiles[rackId], b = g.tiles[boardId];
   g.history.push([rackId, boardId]); g.actions.push(res.action);
-  const [bx, by] = center(b);
-  const px = slotRect ? slotRect.left + slotRect.width / 2 : bx;
-  const py = slotRect ? slotRect.top + slotRect.height / 2 : by;
-  pop(px, py - 10, `+${gain}`);
-  if (a.kind === 'capydindon') { legendFound(px, py, bx, by); res.action.gain += 1000; } else { snd.play('fuse', g.combo); buzz(12); }
-  if (g.combo === 3) earnUndo(px, py);
+  let legend = false;
+  if (a.kind === 'capydindon') {
+    g.score += 1000; res.action.gain += 1000; legend = true;
+    if (!g.legendSeen) { g.legendSeen = true; S.stats.legends++; persist(); }
+    g.legends = 1; legendChip();
+  }
+  if (g.combo === 3) earnUndo(from.left, from.top);
   const cb = $('g-combo'); if (g.combo >= 1) { cb.textContent = `Combo ×${g.combo + 1}`; cb.classList.remove('show', 'bump'); void cb.offsetWidth; cb.classList.add('show', 'bump'); clearTimeout(comboT); comboT = window.setTimeout(() => cb.classList.remove('show'), 4000); }
   noteCombo();
-  const emptied = g.rack.length === 0 && res.action.rackBefore.length > 0;
-  refresh();
-  if (slotRect) fuseAt(from, b.kind, slotRect, a.kind);
-  if (emptied && g.tiles.some((x) => !x.removed)) { const r = $('g-rack').getBoundingClientRect(); pop(r.left + r.width / 2, r.bottom + 10, 'Le haut est libre'); }
+  g.els[t.id].classList.add('gone');
+  const order = fusionOrder(res.action.rackBefore, t.id, rackId);
+  noteFusion({ from, incoming: t.id, mate: rackId, kind: b.kind, held: a.kind, landed: order.landed, paired: order.paired, after: res.action.rackAfter.slice(), combo: g.combo, legend, gain: res.action.gain, emptied: g.rack.length === 0 && res.action.rackBefore.length > 0 });
 }
-board.addEventListener('pointerdown', (e) => { const d = (e.target as HTMLElement).closest('.tile') as HTMLElement | null; if (d && g) { e.preventDefault(); tap(g.tiles[+d.dataset.id!]); } });
+board.addEventListener('pointerdown', (e) => { if (rackBusy()) return; const d = (e.target as HTMLElement).closest('.tile') as HTMLElement | null; if (d && g) { e.preventDefault(); tap(g.tiles[+d.dataset.id!]); } });
 $('g-rack').addEventListener('pointerdown', (e) => {
+  if (rackBusy()) return;
   const slot = (e.target as HTMLElement).closest('.rack-slot') as HTMLElement | null;
   if (!slot || !g || slot.classList.contains('empty') || g.rackTold) return;
   g.rackTold = true; toast('Elle attend sa paire. Annuler pour la reposer.');
@@ -712,7 +810,7 @@ const undoLeft = () => { if (!g) return 0; const lim = g.level.undos ?? -1; retu
 const undoLimited = () => !!g && (g.level.undos ?? -1) >= 0;
 function earnUndo(x: number, y: number) { if (!g || !undoLimited()) return; g.undoBonus++; pop(x, y + 34, '+1 annulation'); const b = $('g-undo-n'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
 function doUndo() {
-  if (!g || g.over) return;
+  if (!g || g.over || rackBusy()) return;
   if ((g.level.rack ?? 0) > 0) {
     if (!g.actions.length) return;
     if (undoLeft() <= 0) { toast('Plus d\'annulation : un combo ×4 ou le capydindon en redonne une'); snd.play('invalid'); return; }
@@ -735,19 +833,45 @@ function showRackHint(h: NonNullable<ReturnType<typeof rackHint>>, cls: 'hint' |
 }
 function nudgeRack() { if (!g) return; const h = rackHint(g.tiles, g.rack, g.level.rack); if (h) showRackHint(h, 'nudge'); }
 function doHint() {
-  if (!g || g.over || (g.hints >= g.level.hints && g.level.mode !== 'zen')) return;
+  if (!g || g.over || rackBusy() || (g.hints >= g.level.hints && g.level.mode !== 'zen')) return;
   if ((g.level.rack ?? 0) > 0) { const h = rackHint(g.tiles, g.rack, g.level.rack); if (!h) return; g.hints++; g.idle = Date.now(); refresh(); showRackHint(h, 'hint'); snd.play('hint'); return; }
   const x = findHint(g.tiles); if (!x) return; g.hints++; g.idle = Date.now(); g.sel = null; refresh(); x.forEach((t) => g!.els[t.id].classList.add('hint')); snd.play('hint');
 }
-/** Shuffle the remaining faces. A shuffle is only spent when it worked; when no arrangement can clear the board, the end card explains it.
- * Undo history is kept: a removed pair still matches after a shuffle, so undoing stays valid. */
+/** Shuffle the remaining faces. Spent only when a clearable deal exists.
+ * Classic undo history stays. A rack shuffle has mixed the parked faces back in, so that history is cleared. */
 function doShuffle() {
-  if (!g || g.over || (g.shuffles >= g.level.shuffles && g.level.mode !== 'zen')) return;
-  const left = g.tiles.filter((t) => !t.removed).length;
-  const seed = (g.level.seed + (g.shuffles + 1) * 7919 + left * 131 + g.undos) >>> 0;
-  const res = (g.level.rack ?? 0) > 0 ? reshuffleRack(g.tiles, g.rack, g.level.rack, seed) : reshuffle(g.tiles, seed);
+  if (!g || g.over || rackBusy() || (g.shuffles >= g.level.shuffles && g.level.mode !== 'zen')) return;
+  const game = g;
+  const left = game.tiles.filter((t) => !t.removed).length;
+  const seed = (game.level.seed + (game.shuffles + 1) * 7919 + left * 131 + game.undos) >>> 0;
+  const rackOn = (game.level.rack ?? 0) > 0;
+  const returning = rackOn ? game.rack.map((id) => {
+    const slot = document.querySelector(`.rack-slot[data-id="${id}"]`) as HTMLElement | null;
+    return { id, kind: game.tiles[id].kind, from: (slot ?? game.els[id]).getBoundingClientRect() };
+  }) : [];
+  const res = rackOn ? reshuffleRack(g.tiles, g.rack, g.level.rack, seed) : reshuffle(g.tiles, seed);
   if (res === 'dead') { snd.play('invalid'); noMoves(true); return; }
-  g.shuffles++; g.sel = null; g.idle = Date.now(); snd.play('shuffle'); g.els.forEach((d) => { d.classList.remove('flip'); void d.offsetWidth; d.classList.add('flip'); }); closeOv(); release(); refresh(); toast('Tuiles mélangées');
+  g.shuffles++; g.sel = null; g.idle = Date.now();
+  // Parked faces were mixed back into the board. Undoing a pre-shuffle take or pair would duplicate groups.
+  if (rackOn) { g.rack = []; g.actions = []; g.history = []; }
+  snd.play('shuffle'); closeOv(); release(); refresh();
+  if (!rackOn || calm() || !returning.length) g.els.forEach((d) => { d.classList.remove('flip'); void d.offsetWidth; d.classList.add('flip'); });
+  else {
+    const gen = motionGen; motion++;
+    let pending = returning.length;
+    const landed = () => { if (gen !== motionGen) return; if (--pending <= 0) motion = Math.max(0, motion - 1); };
+    for (const r of returning) {
+      const tile = g.els[r.id]; tile.classList.add('flyback');
+      const el = flyer(r.from, r.kind); el.classList.add('back'); markPhase('flyback');
+      glide(el, r.from, tile.getBoundingClientRect());
+      let done = false;
+      const land = () => { if (done) return; done = true; el.remove(); tile.classList.remove('flyback'); tile.classList.remove('flip'); void tile.offsetWidth; tile.classList.add('flip'); landed(); };
+      el.addEventListener('transitionend', (ev) => { if (ev.propertyName === 'transform') land(); });
+      setTimeout(land, 340);
+    }
+    g.els.forEach((d) => { if (d.classList.contains('flyback')) return; d.classList.remove('flip'); void d.offsetWidth; d.classList.add('flip'); });
+  }
+  toast('Tuiles mélangées');
 }
 $('g-hint').onclick = doHint; $('g-undo').onclick = doUndo; $('g-shuf').onclick = doShuffle; $('g-pause').onclick = () => pause();
 addEventListener('keydown', (e) => {
@@ -763,7 +887,7 @@ addEventListener('keydown', (e) => {
   if (view !== 'game' || !g) return;
   const ovOpen = $('ov').classList.contains('show');
   if (e.key === 'Escape') { if (!ovOpen) pause(); else if ($('card').classList.contains('pause')) resume(); return; }
-  if (ovOpen || g.pausedAt || e.repeat || e.altKey || e.metaKey) return; // no shortcuts behind a card or while paused
+  if (ovOpen || g.pausedAt || e.repeat || e.altKey || e.metaKey || rackBusy()) return; // no shortcuts behind a card, while paused, or mid-fusion
   const tileEl = (e.target as HTMLElement).closest?.('.tile') as HTMLElement | null;
   if (tileEl && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tap(g.tiles[+tileEl.dataset.id!]); return; }
   if (e.ctrlKey) return;
@@ -882,7 +1006,7 @@ function noMoves(knownDead = false) {
   const undoBtn = `<button class="btn" id="n-undo" ${canUndo ? '' : 'disabled'}>${ic('undo')}<span>Annuler${undoLimited() ? ` (${undoLeft()})` : ''}</span></button>`;
   const exits = `<div class="row small"><button class="btn" id="n-retry">${ic('retry')}<span>Recommencer</span></button><button class="btn" id="n-map">${ic(g.level.mode === 'level' ? 'map' : 'home')}<span>Quitter</span></button></div>`;
   hold();
-  if (canShuf) openOv(`<h2>${rackStuck ? 'Plateau du haut plein' : 'Plus de paires'}</h2><div class="capy-s">${capySvg('bonnet')}</div><p>${rackStuck ? 'Plus aucune paire ne peut entrer dans le plateau du haut. Mélange les tuiles du plateau, ou annule un coup.' : 'Aucune paire libre. Mélange les tuiles restantes, ou annule un coup.'}</p>
+  if (canShuf) openOv(`<h2>${rackStuck ? 'Plateau du haut plein' : 'Plus de paires'}</h2><div class="capy-s">${capySvg('bonnet')}</div><p>${rackStuck ? 'Plus aucune tuile ne peut entrer : même une paire a besoin d\'une place libre. Mélanger fait redescendre le plateau du haut, ou annule un coup.' : 'Aucune paire libre. Mélange les tuiles restantes, ou annule un coup.'}</p>
     <div class="row">${undoBtn}<button class="btn primary" id="n-shuf">${ic('shuffle')}<span>Mélanger${zen ? '' : ` (${g.level.shuffles - g.shuffles})`}</span></button></div>${exits}`, 'lose');
   else if (dead && hasPair) openOv(`<h2>Tuiles coincées</h2><div class="capy-s sad">${capySvg('bonnet')}</div><p>Même mélangées, les tuiles restantes ne pourront plus toutes partir (elles sont empilées). Ton mélange n'a pas été utilisé.</p>
     <div class="row">${canUndo ? undoBtn : ''}<button class="btn" id="n-cont">${ic('play')}<span>Continuer</span></button></div>${exits}`, 'lose');
@@ -942,9 +1066,25 @@ function howTo(then?: () => void) {
    <div class="hstep"><div class="hart">${tile('fraise-3')}${tile('fraise-3')}</div><p>Touche deux tuiles identiques pour les retirer.</p></div>
    <div class="hstep"><div class="hart">${tile('agrume-1', 'blk')}${tile('canard')}${tile('agrume-2', 'blk')}</div><p>Une tuile est libre si rien n'est dessus et si son côté gauche ou droit est dégagé.</p></div>
    <div class="hstep"><div class="hart">${tile('printemps')}${tile('hiver')}</div><p>Les saisons vont ensemble, les fleurs aussi. Vide le plateau pour gagner !</p></div>
-   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>En dehors de la Rivière, une tuile libre monte dans le plateau du haut. Touche sa paire pour les retirer. Un plateau du haut plein, sans paire possible, bloque la partie.</p></div>` : ''}</div>
+   ${rackCard ? `<div class="hstep"><div class="hart">${tile('yuzu-1')}${tile('yuzu-1')}</div><p>En dehors de la Rivière, une tuile libre monte dans le plateau du haut. Sa paire a besoin d'une place libre pour la rejoindre, puis elles fusionnent. Un plateau du haut plein bloque la partie.</p></div>` : ''}</div>
    <div class="row"><button class="btn primary" id="ht-ok">${then ? 'C\'est parti !' : 'Compris'}</button></div>`, 'howto');
   $('ht-ok').onclick = () => { S.seenHowTo = true; persist(); closeOv(); then?.(); };
+}
+
+function stageRack(full: boolean): number | null {
+  if (!g || !(g.level.rack > 0)) return null;
+  const game = g;
+  const slots = game.level.rack;
+  const x0 = game.bounds.x0, y0 = game.bounds.y0;
+  for (const t of game.tiles) t.removed = true;
+  const kinds = full
+    ? [...['canard', 'couronne', 'lotus', 'paille', 'serviette', 'bonnet'].slice(0, slots), 'canard', 'lunettes']
+    : ['canard', 'couronne', 'lotus', 'canard', 'paille'];
+  kinds.forEach((kind, i) => { const t = game.tiles[i]; t.removed = false; t.x = x0 + i * 4; t.y = y0; t.z = 0; t.kind = kind; });
+  g.rack = full ? Array.from({ length: slots }, (_, i) => i) : [0, 1, 2];
+  g.actions = []; g.history = []; g.sel = null; g.over = false;
+  layout(); refresh();
+  return full ? slots : 3;
 }
 
 // ---------- test/debug hooks (used by Playwright e2e)
@@ -993,6 +1133,25 @@ function howTo(then?: () => void) {
   music: () => snd.snapshot(),
   setTheme: (id: string) => { if (isThemeId(id)) void snd.playTheme(id); },
   sfx: (n: Sfx) => snd.play(n),
+  rack: () => g && { ids: g.rack.slice(), busy: rackBusy(), score: g.score, actions: g.actions.length, combo: g.combo, removed: g.tiles.filter((t) => t.removed).length },
+  phases: () => fusePhases.slice(),
+  /** A mate sits in the rack with neighbours on either side, so the incoming tile has to slide over. */
+  prepFusion: () => stageRack(false),
+  /** The rack is full and a free board tile matches one of its occupants. */
+  prepFull: () => stageRack(true),
+  /** Two tiles wait in the rack, the score and an undo are already banked. */
+  prepShuffle: () => {
+    if (!g || !(g.level.rack > 0)) return null;
+    const game = g;
+    const x0 = game.bounds.x0, y0 = game.bounds.y0;
+    const kinds = ['canard', 'couronne', 'lotus', 'canard', 'couronne', 'lotus'];
+    for (const t of game.tiles) t.removed = true;
+    kinds.forEach((kind, i) => { const t = game.tiles[i]; t.removed = false; t.x = x0 + (i % 3) * 4; t.y = y0 + Math.floor(i / 3) * 4; t.z = 0; t.kind = kind; });
+    g.rack = [0, 1]; g.actions = [{ type: 'take', rackBefore: [], rackAfter: [0], removed: [], gain: 0 }]; g.history = [[8, 9]];
+    g.score = 480; g.combo = 2; g.over = false; g.sel = null;
+    layout(); refresh();
+    return { score: g.score, rack: g.rack.slice() };
+  },
 };
 
 // ---------- boot

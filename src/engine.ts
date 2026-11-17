@@ -161,28 +161,54 @@ function pairsFromKind(tiles: Tile[]): [number, number][] {
   return out;
 }
 
-/** Hint-style rack play: match the rack, else a free pair, else park the tile whose mate is underneath. */
-export function playRack(tiles: Tile[], slots: number): { win: boolean; peak: number; forced: number } {
+/**
+ * Rack play under the landing rule: the mate already in the rack keeps its slot, so the
+ * incoming tile needs one more. Peak counts that momentary extra tile. A few seeded
+ * retries cover lines the single greedy pass misses, without ever fusing into a full rack.
+ */
+function landLine(tiles: Tile[], slots: number, seed?: number): { win: boolean; peak: number; forced: number } {
+  if (slots < 2) return { win: false, peak: 0, forced: 0 };
+  const random = seed === undefined ? null : rng(seed);
+  const take = <T>(xs: T[]): T => random ? xs[Math.floor(random() * xs.length)] : xs[0];
   const rack: number[] = [];
   let peak = 0, forced = 0;
   const live = tiles.map((t) => ({ ...t }));
-  for (let step = 0; step < tiles.length * 3; step++) {
+  for (let step = 0; step < tiles.length * 4; step++) {
     if (live.every((t) => t.removed)) return { win: true, peak, forced };
     const held = new Set(rack);
     const board = live.filter((t) => !t.removed && !held.has(t.id));
     const free = freeTiles(board);
     const mate = (kind: string) => rack.find((id) => matches(live[id].kind, kind));
-    const hit = free.find((f) => mate(f.kind) !== undefined);
-    if (hit) { const id = mate(hit.kind)!; hit.removed = true; live[id].removed = true; rack.splice(rack.indexOf(id), 1); continue; }
-    let pair: [Tile, Tile] | null = null;
-    for (let i = 0; i < free.length && !pair; i++) for (let j = i + 1; j < free.length; j++) if (matches(free[i].kind, free[j].kind)) pair = [free[i], free[j]];
-    if (pair && rack.length < slots) { rack.push(pair[0].id); peak = Math.max(peak, rack.length); continue; }
-    if (!free.length || rack.length >= slots) return { win: false, peak, forced };
-    const pick = free.find((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)))
-      ?? free.slice().sort((a, b) => b.z - a.z)[0];
+    const hits = free.filter((f) => mate(f.kind) !== undefined);
+    if (hits.length && rack.length < slots) {
+      const hit = take(hits);
+      const id = mate(hit.kind)!;
+      rack.push(hit.id); peak = Math.max(peak, rack.length);
+      hit.removed = true; live[id].removed = true;
+      rack.splice(rack.indexOf(id), 1); rack.splice(rack.indexOf(hit.id), 1);
+      continue;
+    }
+    if (!free.length || rack.length >= slots - 1) return { win: false, peak, forced };
+    const pairs: Tile[] = [];
+    for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) if (matches(free[i].kind, free[j].kind)) pairs.push(free[i]);
+    const uncover = free.filter((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)));
+    if (uncover.length) { const pick = uncover.slice().sort((a, b) => b.z - a.z)[0]; forced++; rack.push(pick.id); peak = Math.max(peak, rack.length); continue; }
+    if (pairs.length) { rack.push(take(pairs).id); peak = Math.max(peak, rack.length); continue; }
+    const pick = free.slice().sort((a, b) => b.z - a.z)[0];
     forced++; rack.push(pick.id); peak = Math.max(peak, rack.length);
   }
   return { win: false, peak, forced };
+}
+
+/** Hint-style rack play. Match only when a slot is free for the incoming tile. */
+export function playRack(tiles: Tile[], slots: number): { win: boolean; peak: number; forced: number } {
+  const straight = landLine(tiles, slots);
+  if (straight.win && straight.peak <= slots) return straight;
+  for (let k = 0; k < 24; k++) {
+    const line = landLine(tiles, slots, 9000 + k * 131);
+    if (line.win && line.peak <= slots) return line;
+  }
+  return straight;
 }
 
 export function findHint(tiles: Tile[]): [Tile, Tile] | null {
