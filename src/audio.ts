@@ -1,44 +1,77 @@
 // All audio is synthesized at runtime with the Web Audio API: original, no samples, no third-party licences.
-// Mix: music (EP, bass, soft drums, mallet melody; no noise layer) and SFX each go through their own tone-shaping and volume,
-// then a clean trim and a safety limiter (peaks only) so stacked combos never clip. Sub-bass is filtered out of
-// the music: phone speakers cannot reproduce it and turn it into buzz/distortion when the volume is turned up.
+// SFX stay on their own bus. Music is six lo-fi themes (src/music), each loaded the first time it is needed.
+// Two themes can overlap during an equal-power crossfade; a third request waits so nothing stacks louder than that.
+// Sub-bass is filtered out: phone speakers cannot reproduce it and turn it into buzz.
+import { THEME_IDS, chordAt, isThemeId, themeById, type ThemeId } from './music/catalog';
+import type { Kit, Memory, ThemePlay } from './music/kit';
+import { themeForWorld } from './music/select';
+import { advance, audibleIds, gainsAt, idleMachine, nextBoundary, requestTheme, skipLate, type MusicMachine } from './music/transition';
+import type { makeKit } from './music/voices';
+
 export type Sfx = 'legend' | 'buy' | 'unlock' | 'select' | 'match' | 'fuse' | 'invalid' | 'shuffle' | 'hint' | 'win' | 'star' | 'click' | 'lose';
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 const rng = (seed: number) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-
-// ---------- harmony: jazzy 7th/9th/13th chords, two 4-bar progressions per world
-const PC: Record<string, number> = { C: 0, 'C#': 1, Db: 1, D: 2, Eb: 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, Ab: 8, 'D#': 3, 'A#': 10, A: 9, Bb: 10, B: 11 };
-const QUAL: Record<string, number[]> = { maj9: [4, 7, 11, 14], m9: [3, 7, 10, 14], '13': [4, 10, 14, 21], m11: [3, 7, 10, 17], '7b9': [4, 10, 13, 19], '69': [4, 9, 14, 19], maj7: [4, 7, 11, 16], m7: [3, 7, 10, 15] };
-interface Chord { root: number; notes: number[] }
-const chord = (s: string): Chord => {
-  const [r, q] = s.split(':'); const root = PC[r];
-  if (root === undefined || !QUAL[q]) throw new Error('bad chord ' + s);
-  const notes = QUAL[q].map((iv) => { let n = 48 + root + iv; while (n < 53) n += 12; while (n > 72) n -= 12; return n; }).sort((a, b) => a - b);
-  return { root, notes: [...new Set(notes)] };
-};
-interface Song { bpm: number; key: number; A: Chord[]; B: Chord[] }
-const song = (bpm: number, key: string, A: string, B: string): Song => ({ bpm, key: PC[key], A: A.split(' ').map(chord), B: B.split(' ').map(chord) });
-export const SONGS: Song[] = [
-  song(74, 'C', 'D:m9 G:13 C:maj9 A:m9', 'F:maj9 E:m7 D:m9 G:13'), // Rivière
-  song(68, 'F', 'G:m9 C:13 F:maj9 D:m9', 'Bb:maj9 A:m7 G:m9 C:7b9'), // Onsen
-  song(78, 'G', 'E:m9 A:m9 D:13 G:maj9', 'C:maj9 B:m7 A:m9 D:13'), // Forêt
-  song(64, 'D', 'D:maj9 B:m9 E:m9 A:13', 'G:maj9 F#:m7 E:m11 A:7b9'), // Montagne
-  song(70, 'E', 'C#:m9 F#:m9 B:13 E:maj9', 'A:maj9 G#:m7 F#:m11 B:13'), // Temple
-];
-const PENTA = [0, 2, 4, 7, 9];
-const RHY = [[0, 3, 6], [1, 4], [0, 2, 5], [3, 4, 6], [2, 6], [0, 5]];
+const hashId = (id: string) => { let h = 2166136261; for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619); return h >>> 0; };
 
 /** Default volumes (0..1 sliders). Gains follow v^1.5 (perceptual) times a calibrated ceiling. */
 const TRIM = 1.8;
 export const DEFAULT_MUSIC = 0.45, DEFAULT_SFX = 0.6;
 const MUSIC_MAX = 0.38, SFX_MAX = 0.52; // slider 100% = MAX; defaults land where the mix was tuned
 
+const LOADERS: Record<ThemeId, () => Promise<{ play: ThemePlay }>> = {
+  riviere: () => import('./music/themes/riviere'),
+  onsen: () => import('./music/themes/onsen'),
+  foret: () => import('./music/themes/foret'),
+  montagne: () => import('./music/themes/montagne'),
+  temple: () => import('./music/themes/temple'),
+  brume: () => import('./music/themes/brume'),
+};
+
+interface Deck {
+  id: ThemeId;
+  gain: GainNode;
+  wet: GainNode;
+  delay: DelayNode;
+  kit: Kit;
+  anchor: number;
+  next: number;
+  step: number;
+  rng: () => number;
+  mem: Memory;
+  alive: boolean;
+  retireAt: number;
+  /** Last time a preview ramp was written. Offline renders trace the fade instead of cancelling it. */
+  traceT: number | null;
+}
+
+export interface MusicSnapshot {
+  state: AudioContextState | 'none';
+  theme: ThemeId | null;
+  pending: ThemeId | null;
+  out: ThemeId | null;
+  phase: MusicMachine['phase'];
+  on: boolean;
+  audible: ThemeId[];
+}
+
 export class Sound {
   ctx: AudioContext | null = null;
   sfxOn = true; musicOn = true; musicVol = DEFAULT_MUSIC; sfxVol = DEFAULT_SFX;
-  private mix!: GainNode; private sfxBus!: GainNode; private sfxVolG!: GainNode; private musicIn!: GainNode; private musicVolG!: GainNode; private fade!: GainNode;
-  private epBus!: GainNode; private bassBus!: GainNode; private echo!: GainNode; private noise!: AudioBuffer; // noise is only used by short SFX (select, buy, shuffle), never by the music
-  private timer = 0; private world = -1; private next = 0; private step = 0; private r = rng(1); private lastMel = 0;
+  /** Offline renders step the clock themselves and call pump(). */
+  manual = false;
+  private mix!: GainNode; private sfxBus!: GainNode; private sfxVolG!: GainNode; private musicIn!: GainNode; private musicVolG!: GainNode; private musicMute!: GainNode;
+  private noise!: AudioBuffer; // noise is only used by short SFX (select, buy, shuffle), never by the music
+  private timer = 0;
+  private r = rng(1);
+  private desired: ThemeId = 'riviere';
+  private machine: MusicMachine = idleMachine();
+  private appliedRev = -1;
+  private token = 0;
+  private muteToken = 0;
+  private plays = new Map<ThemeId, ThemePlay>();
+  private voices: { makeKit: typeof makeKit } | null = null;
+  private decks = new Map<ThemeId, Deck>();
+
   ensure() {
     // iOS: the context can be 'suspended' (no gesture yet / page hidden) or 'interrupted' (call, Siri, other app took audio):
     // every user gesture calls ensure(), which resumes it.
@@ -58,20 +91,13 @@ export class Sound {
     this.sfxVolG = ctx.createGain(); this.sfxVolG.connect(this.mix);
     const sLp = ctx.createBiquadFilter(); sLp.type = 'lowpass'; sLp.frequency.value = 6500; sLp.Q.value = 0.5; sLp.connect(this.sfxVolG);
     this.sfxBus = ctx.createGain(); this.sfxBus.connect(sLp);
-    // music: 2x high-pass (no sub-bass) -> warm low-pass ~7 kHz -> fade -> user volume
+    // music: per-theme decks sum here → 2x high-pass (no sub-bass) → warm low-pass → mute → user volume
     this.musicVolG = ctx.createGain(); this.musicVolG.connect(this.mix);
-    this.fade = ctx.createGain(); this.fade.gain.value = 0; this.fade.connect(this.musicVolG);
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 7000; lp.Q.value = 0.5; lp.connect(this.fade);
+    this.musicMute = ctx.createGain(); this.musicMute.gain.value = this.musicOn ? 1 : 0; this.musicMute.connect(this.musicVolG);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 7000; lp.Q.value = 0.5; lp.connect(this.musicMute);
     const hp2 = ctx.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = 90; hp2.Q.value = 0.6; hp2.connect(lp);
     const hp1 = ctx.createBiquadFilter(); hp1.type = 'highpass'; hp1.frequency.value = 90; hp1.Q.value = 0.6; hp1.connect(hp2);
     this.musicIn = ctx.createGain(); this.musicIn.connect(hp1);
-    const epLp = ctx.createBiquadFilter(); epLp.type = 'lowpass'; epLp.frequency.value = 5000; epLp.Q.value = 0.3; epLp.connect(this.musicIn);
-    this.epBus = ctx.createGain(); this.epBus.connect(epLp);
-    const bLp = ctx.createBiquadFilter(); bLp.type = 'lowpass'; bLp.frequency.value = 800; bLp.Q.value = 0.4; bLp.connect(this.musicIn);
-    this.bassBus = ctx.createGain(); this.bassBus.connect(bLp);
-    // tape-ish echo (dotted eighth set per song), darkened on every repeat
-    const dl = ctx.createDelay(2); const fb = ctx.createGain(); fb.gain.value = 0.32; const eLp = ctx.createBiquadFilter(); eLp.type = 'lowpass'; eLp.frequency.value = 2200;
-    this.echo = ctx.createGain(); this.echo.gain.value = 0.22; this.echo.connect(dl); dl.connect(eLp).connect(fb).connect(dl); eLp.connect(this.musicIn); (this.echo as unknown as { d: DelayNode }).d = dl;
     const R = rng(7); const n = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, n, ctx.sampleRate); const d = this.noise.getChannelData(0); for (let i = 0; i < n; i++) d[i] = R() * 2 - 1;
     this.setVolumes(this.musicVol, this.sfxVol);
@@ -79,7 +105,7 @@ export class Sound {
   }
   setVolumes(music: number, sfx: number) {
     this.musicVol = music; this.sfxVol = sfx; if (!this.ctx) return; const t = this.ctx.currentTime;
-    this.musicVolG.gain.setTargetAtTime(music ** 1.5 * MUSIC_MAX, t, 0.05); this.sfxVolG.gain.setTargetAtTime(sfx ** 1.5 * SFX_MAX, t, 0.02); // perceptual curve
+    this.musicVolG.gain.setTargetAtTime(music ** 1.5 * MUSIC_MAX, t, 0.05); this.sfxVolG.gain.setTargetAtTime(sfx ** 1.5 * SFX_MAX, t, 0.02);
   }
   // ---------- primitives
   private env(g: GainNode, t: number, a: number, peak: number, tau: number, end: number) {
@@ -95,7 +121,7 @@ export class Sound {
     const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; const g = ctx.createGain();
     this.env(g, t, a, vol, dur / 3, t + dur + 0.1); s.connect(f).connect(g).connect(bus); s.start(t, this.r() * 1.5); s.stop(t + dur + 0.1);
   }
-  // ---------- SFX (soft attacks, rounded timbres)
+  // ---------- SFX (soft attacks, rounded timbres). Unaffected by the music crossfade.
   play(n: Sfx, combo = 0) {
     if (!this.sfxOn || !this.ensure()) return; const t = this.ctx!.currentTime + 0.005; const b = this.sfxBus;
     switch (n) {
@@ -116,95 +142,246 @@ export class Sound {
       case 'lose': [67, 63, 60].forEach((m, i) => this.tone(b, mtof(m), t + i * 0.18, 0.5, 0.12, 'triangle', 0.012)); break;
     }
   }
+
   // ---------- music
-  music(world: number) {
-    if (this.world === world && this.timer) return;
-    const was = !!this.timer; this.stopMusic(); this.world = world; if (!this.musicOn || !this.ensure()) return;
-    const ctx = this.ctx!; const now = ctx.currentTime; const start = now + (was ? 0.5 : 0.1);
-    this.next = start; this.step = 0; this.r = rng(1000 + world); this.lastMel = 72 + SONGS[world].key;
-    const spb = 60 / SONGS[world].bpm / 2; (this.echo as unknown as { d: DelayNode }).d.delayTime.setValueAtTime(spb * 3, start);
-    this.fade.gain.cancelScheduledValues(start); this.fade.gain.setValueAtTime(0, start); this.fade.gain.linearRampToValueAtTime(1, start + 2.5);
-    this.timer = window.setInterval(() => this.schedule(), 100);
+  /** Campaign world index → that world's theme. Menus and modes use playTheme() with their own choice. */
+  music(world: number) { void this.playTheme(themeForWorld(world)); }
+
+  /** Load theme modules (and the shared voices) without starting them. Safe to call more than once. */
+  preload(ids: readonly ThemeId[] = THEME_IDS): Promise<void> {
+    return Promise.all(ids.map(async (id) => {
+      if (this.plays.has(id)) return;
+      const m = await LOADERS[id]();
+      this.plays.set(id, m.play);
+    })).then(async () => {
+      if (!this.voices) this.voices = await import('./music/voices');
+    }).then(() => undefined);
   }
-  stopMusic() {
-    clearInterval(this.timer); this.timer = 0; if (!this.ctx) return; const t = this.ctx.currentTime;
-    this.fade.gain.cancelScheduledValues(t); this.fade.gain.setValueAtTime(this.fade.gain.value, t); this.fade.gain.linearRampToValueAtTime(0, t + 0.4);
+
+  /**
+   * Crossfade to `id` (or fade it in, if nothing is playing). Same theme is a no-op.
+   * Resolves once the request has been applied. A gesture is still required before sound
+   * actually leaves a suspended context.
+   */
+  playTheme(id: ThemeId): Promise<void> {
+    if (!isThemeId(id)) return Promise.resolve();
+    this.desired = id;
+    if (!this.musicOn) return Promise.resolve();
+    const token = ++this.token;
+    const job = this.preload([id]).then(() => {
+      if (token !== this.token || !this.musicOn || this.desired !== id) return;
+      if (!this.ensure()) return;
+      this.commit(id);
+    }).catch(() => { /* a missing chunk leaves the previous theme playing */ });
+    return job;
   }
-  setMusic(on: boolean) { this.musicOn = on; if (!on) this.stopMusic(); else if (this.world >= 0) { const w = this.world; this.world = -1; this.music(w); } }
-  private schedule() {
-    const ctx = this.ctx!; const S = SONGS[this.world]; const spb = 60 / S.bpm / 2; // eighth notes
-    if (this.next < ctx.currentTime - 0.05) this.next = ctx.currentTime + 0.05; // after a suspend: skip, never burst-schedule the past
-    while (this.next < ctx.currentTime + 0.3) {
-      const s = this.step, beat = s % 8, barN = Math.floor(s / 8), bar = barN % 16, cycle = Math.floor(barN / 16), sec = Math.floor(bar / 4);
-      const t = this.next + (beat % 2 ? spb * 0.22 : 0) + (this.r() - 0.5) * 0.008; // swing + humanize
-      const prog = sec % 2 ? S.B : S.A; const ch = prog[bar % 4]; const nextCh = prog[(bar + 1) % 4];
-      const breakdown = sec === 3, intro = cycle === 0 && bar < 2;
-      // electric piano: strum on 1, soft re-strike on the "and of 2" in sections B/C
-      if (beat === 0) ch.notes.forEach((m, i) => this.ep(mtof(m), t + i * 0.014, spb * 7.4, 0.12 + this.r() * 0.02, i));
-      if (beat === 3 && (sec === 1 || sec === 2) && this.r() < 0.6) ch.notes.slice(1).forEach((m, i) => this.ep(mtof(m), t + i * 0.012, spb * 3.6, 0.04, i + 1));
-      // bass (C2-B2, octave & approach notes)
-      const root = 36 + ch.root;
-      if (!intro) {
-        if (beat === 0) this.bass(mtof(root), t, spb * (breakdown ? 6 : 2.6), 0.075);
-        if (beat === 3 && !breakdown) this.bass(mtof(root + (this.r() < 0.5 ? 7 : 12)), t, spb * 1.5, 0.06);
-        if (beat === 7 && !breakdown && this.r() < 0.55) { const nr = 36 + nextCh.root; this.bass(mtof(nr + (nr > root ? -1 : 1)), t, spb * 0.8, 0.055); }
+
+  setMusic(on: boolean) {
+    this.musicOn = on;
+    if (!on) {
+      this.token++; // drop a theme load that hasn't started yet
+      if (this.ctx) this.rampMute(0, 0.4);
+      const token = ++this.muteToken;
+      window.setTimeout(() => { if (token !== this.muteToken || this.musicOn) return; this.hardStop(); }, 460);
+      return;
+    }
+    this.muteToken++;
+    if (this.ctx) this.rampMute(1, 0.45);
+    const steady = this.machine.phase !== 'idle' && this.machine.lead === this.desired && !this.machine.pending && !this.machine.out;
+    if (steady) { this.startTimer(); return; }
+    void this.playTheme(this.desired);
+  }
+
+  /** One scheduler tick. The interval calls this; offline renders call it as they advance the clock. */
+  pump() {
+    if (!this.ctx || this.ctx.state === 'closed') return;
+    const now = this.ctx.currentTime;
+    const boundary = this.leadBoundary(now);
+    const next = advance(this.machine, now, boundary);
+    if (next !== this.machine) this.machine = next;
+    if (this.manual) this.traceGains(now);
+    else this.apply(now);
+    if (this.musicOn) {
+      for (const id of audibleIds(this.machine)) {
+        const play = this.plays.get(id);
+        const deck = this.decks.get(id);
+        if (play && deck?.alive) this.scheduleDeck(deck, play, now);
       }
-      // drums: boom-bap, brushed snare, low hats; breakdown = hats only
-      if (!breakdown && !intro) {
-        if (beat === 0 || (beat === 5 && this.r() < 0.8)) this.kick(t, beat === 0 ? 0.26 : 0.19);
-        if (beat === 2 || beat === 6) this.snare(t, 0.2 + this.r() * 0.03);
-      }
-      if (!intro && beat % 2 === 1 && (!breakdown || beat === 3 || beat === 7)) this.hat(t, 0.035 * (0.8 + this.r() * 0.4));
-      // mallet melody in sections B, A' and C (sparser in breakdown)
-      if (sec > 0 && beat === 0) this.melodyBar(S, ch, t, spb, breakdown);
-      this.next += spb; this.step++;
+    }
+    this.retire(now);
+  }
+
+  snapshot(): MusicSnapshot {
+    return {
+      state: this.ctx?.state ?? 'none', theme: this.machine.lead, pending: this.machine.pending, out: this.machine.out,
+      phase: this.machine.phase, on: this.musicOn, audible: audibleIds(this.machine),
+    };
+  }
+
+  private rampMute(to: number, dur: number) {
+    const t = this.ctx!.currentTime; const g = this.musicMute.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(to, t + dur);
+  }
+
+  private leadBoundary(now: number): number | null {
+    const id = this.machine.lead;
+    const deck = id ? this.decks.get(id) : undefined;
+    if (!id || !deck) return null;
+    return nextBoundary(deck.anchor, themeById(id).bpm, now);
+  }
+
+  private commit(id: ThemeId) {
+    const now = this.ctx!.currentTime;
+    const next = requestTheme(this.machine, id, now, this.leadBoundary(now));
+    if (next !== this.machine) this.machine = next;
+    this.apply(now);
+    this.startTimer();
+  }
+
+  private startTimer() {
+    if (this.manual || this.timer) return;
+    this.timer = window.setInterval(() => this.pump(), 40);
+  }
+
+  /**
+   * Offline preview: write the equal-power curve as a chain of ramps and never cancel earlier ones.
+   * cancelScheduledValues() before startRendering() would erase the fade that hasn't been played yet.
+   */
+  private traceGains(now: number) {
+    if (!this.ctx) return;
+    const m = this.machine;
+    const live = new Set(audibleIds(m));
+    const g = gainsAt(m, now);
+    for (const id of live) {
+      const d = this.ensureDeck(id, now);
+      const n = (id === m.lead ? g.lead : g.out) * themeById(id).level;
+      this.traceParam(d, n, now);
+    }
+    for (const [id, d] of this.decks) {
+      if (live.has(id)) continue;
+      this.traceParam(d, 0, now);
+      d.alive = false;
     }
   }
-  private melodyBar(S: Song, ch: Chord, t0: number, spb: number, sparse: boolean) {
-    if (sparse && this.r() < 0.4) return;
-    const pat = RHY[Math.floor(this.r() * RHY.length)]; const scale: number[] = [];
-    for (let m = 64; m <= 84; m++) if (PENTA.includes((m - S.key + 120) % 12) || ch.notes.some((c) => (c - m) % 12 === 0)) scale.push(m);
-    pat.forEach((pos, i) => {
-      const near = scale.filter((m) => Math.abs(m - this.lastMel) <= 4 && m !== this.lastMel); const pick = near.length ? near[Math.floor(this.r() * near.length)] : scale[Math.floor(scale.length / 2)];
-      const m = i === 0 ? scale.reduce((a, c) => (ch.notes.some((n) => (n - c) % 12 === 0) && Math.abs(c - this.lastMel) < Math.abs(a - this.lastMel) ? c : a), pick) : pick;
-      this.lastMel = m; const end = i + 1 < pat.length ? pat[i + 1] : 8; const swing = pos % 2 ? spb * 0.22 : 0;
-      this.mallet(mtof(m), t0 + pos * spb + swing, Math.max(1, end - pos) * spb * 0.9, sparse ? 0.08 : 0.11);
-    });
+
+  private traceParam(d: Deck, gain: number, now: number) {
+    const p = d.gain.gain;
+    const v = Math.max(0, gain);
+    if (d.traceT == null) {
+      p.setValueAtTime(v, Math.max(0, now));
+      d.traceT = now;
+      return;
+    }
+    if (now <= d.traceT + 0.0005) return;
+    p.linearRampToValueAtTime(v, now);
+    d.traceT = now;
   }
-  // ---------- instruments
-  private ep(f: number, t: number, dur: number, vel: number, i: number) { // FM Rhodes-like tine
-    const ctx = this.ctx!; const car = ctx.createOscillator(); const mod = ctx.createOscillator(); const mg = ctx.createGain(); const g = ctx.createGain(); const p = ctx.createStereoPanner();
-    car.frequency.value = f; mod.frequency.value = f; mg.gain.setValueAtTime(f * 1.1, t); mg.gain.setTargetAtTime(f * 0.22, t, 0.25);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.008); g.gain.setTargetAtTime(vel * 0.4, t + 0.008, 0.6); g.gain.setTargetAtTime(0, t + dur, 0.2);
-    p.pan.value = (i - 1.5) * 0.18; mod.connect(mg).connect(car.frequency); car.connect(g).connect(p).connect(this.epBus);
-    const tine = ctx.createOscillator(); const tg = ctx.createGain(); tine.frequency.value = f * 4; this.env(tg, t, 0.003, vel * 0.12, 0.06, t + 0.5); tine.connect(tg).connect(p);
-    if (i === 3) g.connect(this.echo);
-    const end = t + dur + 1.2; car.start(t); mod.start(t); tine.start(t); car.stop(end); mod.stop(end); tine.stop(t + 0.5);
+
+  private apply(now: number) {
+    if (this.manual) { this.traceGains(now); this.appliedRev = this.machine.rev; return; }
+    if (!this.ctx || this.machine.rev === this.appliedRev) return;
+    this.appliedRev = this.machine.rev;
+    const m = this.machine;
+    const live = new Set(audibleIds(m));
+    for (const id of this.decks.keys()) if (!live.has(id)) this.silenceDeck(id, now);
+    const gNow = gainsAt(m, now);
+    const fading = m.phase === 'fadein' || m.phase === 'xfade';
+    const endAt = fading ? Math.max(now, m.t0 + m.dur) : now;
+    const gEnd = gainsAt(m, endAt);
+    const dur = Math.max(0.02, endAt - now);
+    if (m.lead) this.envDeck(m.lead, gNow.lead * themeById(m.lead).level, gEnd.lead * themeById(m.lead).level, now, dur, !fading);
+    if (m.out) this.envDeck(m.out, gNow.out * themeById(m.out).level, gEnd.out * themeById(m.out).level, now, dur, false);
   }
-  private bass(f: number, t: number, dur: number, vel: number) {
-    const ctx = this.ctx!; const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.012); g.gain.setTargetAtTime(vel * 0.6, t + 0.012, 0.3); g.gain.setTargetAtTime(0, t + dur, 0.06);
-    const a = ctx.createOscillator(); a.frequency.value = f; const b = ctx.createOscillator(); b.type = 'triangle'; b.frequency.value = f; const bg = ctx.createGain(); bg.gain.value = 0.55;
-    const h = ctx.createOscillator(); h.frequency.value = f * 2; const hg = ctx.createGain(); hg.gain.value = 0.3; // 2nd harmonic: audible on phone speakers
-    a.connect(g); b.connect(bg).connect(g); h.connect(hg).connect(g); g.connect(this.bassBus);
-    const end = t + dur + 0.4; [a, b, h].forEach((o) => { o.start(t); o.stop(end); });
+
+  private envDeck(id: ThemeId, from: number, to: number, now: number, dur: number, hold: boolean) {
+    const d = this.ensureDeck(id, now);
+    const p = d.gain.gain;
+    p.cancelScheduledValues(now);
+    const cur = Number.isFinite(p.value) ? p.value : from;
+    if (hold || dur < 0.03 || Math.abs(cur - to) < 0.0008) {
+      p.setValueAtTime(cur, now);
+      p.linearRampToValueAtTime(to, now + 0.03);
+      return;
+    }
+    const N = 32; const curve = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const u = i / (N - 1);
+      curve[i] = cur + (to - cur) * Math.sin(u * Math.PI / 2);
+    }
+    try {
+      p.setValueAtTime(curve[0], now);
+      p.setValueCurveAtTime(curve, now + 0.005, Math.max(0.02, dur - 0.005));
+    } catch {
+      p.cancelScheduledValues(now);
+      p.setValueAtTime(cur, now);
+      p.linearRampToValueAtTime(to, now + dur);
+    }
   }
-  private kick(t: number, vel: number) {
-    const ctx = this.ctx!; const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(58, t + 0.09);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.005); g.gain.setTargetAtTime(0, t + 0.005, 0.07); o.connect(g).connect(this.musicIn); o.start(t); o.stop(t + 0.5);
+
+  private ensureDeck(id: ThemeId, now: number): Deck {
+    const found = this.decks.get(id);
+    if (found) { found.alive = true; found.retireAt = Infinity; return found; }
+    if (!this.voices || !this.ctx) throw new Error('music voices not loaded');
+    const ctx = this.ctx;
+    const spec = themeById(id);
+    const gain = ctx.createGain(); gain.gain.value = 0; gain.connect(this.musicIn);
+    const wet = ctx.createGain();
+    const delay = ctx.createDelay(1.2);
+    delay.delayTime.value = Math.min(1.1, (60 / spec.bpm / 2) * 3);
+    const fb = ctx.createGain(); fb.gain.value = 0.28;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2000; lp.Q.value = 0.4;
+    wet.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(gain);
+    const deck: Deck = {
+      id, gain, wet, delay, kit: this.voices.makeKit({ ctx, dry: gain, wet }),
+      anchor: now, next: now + 0.05, step: 0, rng: rng(hashId(id)), mem: { mel: 64 + spec.keyPc }, alive: true, retireAt: Infinity, traceT: null,
+    };
+    this.decks.set(id, deck);
+    return deck;
   }
-  // drums are pitched (sine partials), no noise: a soft woody rim click and a tiny closed-hat tick
-  private ping(f: number, t: number, vel: number, tau: number, a = 0.002) {
-    const ctx = this.ctx!; const o = ctx.createOscillator(); const g = ctx.createGain(); o.frequency.value = f; this.env(g, t, a, vel, tau, t + tau * 7); o.connect(g).connect(this.musicIn); o.start(t); o.stop(t + tau * 7);
+
+  private silenceDeck(id: ThemeId, now: number) {
+    const d = this.decks.get(id);
+    if (!d || !d.alive) return;
+    d.alive = false; d.retireAt = now + 0.7;
+    const p = d.gain.gain;
+    try { p.cancelScheduledValues(now); p.setValueAtTime(p.value, now); p.linearRampToValueAtTime(0, now + 0.06); } catch { /* context closing */ }
   }
-  private snare(t: number, vel: number) {
-    const ctx = this.ctx!; const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(210, t); o.frequency.exponentialRampToValueAtTime(165, t + 0.06); const g = ctx.createGain(); this.env(g, t, 0.004, vel, 0.035, t + 0.25); o.connect(g).connect(this.musicIn); o.start(t); o.stop(t + 0.25);
-    this.ping(1180, t, vel * 0.35, 0.018, 0.003); this.ping(1730, t, vel * 0.22, 0.014, 0.003);
+
+  private retire(now: number) {
+    if (this.manual) return;
+    for (const [id, d] of this.decks) {
+      if (d.alive || now < d.retireAt) continue;
+      try { d.gain.disconnect(); d.wet.disconnect(); } catch { /* already gone */ }
+      this.decks.delete(id);
+    }
   }
-  private hat(t: number, vel: number) { this.ping(5300, t, vel, 0.009); this.ping(3700, t, vel * 0.5, 0.007); }
-  private mallet(f: number, t: number, dur: number, vel: number) {
-    const ctx = this.ctx!; const o = ctx.createOscillator(); const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f; o.frequency.value = f; const g2 = ctx.createGain(); g2.gain.value = 0.25;
-    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + 0.02); g.gain.setTargetAtTime(vel * 0.45, t + 0.02, 0.25); g.gain.setTargetAtTime(0, t + dur, 0.12);
-    const p = ctx.createStereoPanner(); p.pan.value = 0.2; o.connect(g); o2.connect(g2).connect(g); g.connect(p).connect(this.musicIn); g.connect(this.echo);
-    const end = t + dur + 0.8; o.start(t); o2.start(t); o.stop(end); o2.stop(end);
+
+  private scheduleDeck(deck: Deck, play: ThemePlay, now: number) {
+    const spec = themeById(deck.id);
+    const eighth = 60 / spec.bpm / 2;
+    const skipped = skipLate(deck.next, deck.step, now, eighth);
+    deck.next = skipped.next; deck.step = skipped.step;
+    while (deck.next < now + 0.28) {
+      const step = deck.step;
+      const beat = step % 8;
+      const absBar = Math.floor(step / 8);
+      const bar = absBar % spec.bars;
+      const swing = spec.swing && beat % 2 ? eighth * spec.swing : 0;
+      const t = Math.max(now - 0.02, deck.next + swing + (deck.rng() - 0.5) * 0.004);
+      const { chord, next, sec } = chordAt(spec, absBar);
+      play(deck.kit, {
+        time: t, eighth, step, beat, bar, absBar, cycle: Math.floor(absBar / spec.bars), sec, chord, next, spec,
+        rng: deck.rng, mem: deck.mem,
+      });
+      deck.next += eighth; deck.step++;
+    }
+  }
+
+  private hardStop() {
+    clearInterval(this.timer); this.timer = 0;
+    for (const d of this.decks.values()) { try { d.gain.disconnect(); d.wet.disconnect(); } catch { /* closing */ } }
+    this.decks.clear();
+    this.machine = idleMachine();
+    this.appliedRev = -1;
   }
 }
