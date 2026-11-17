@@ -1,28 +1,16 @@
 // The rack is part of the difficulty, not a cosmetic tray.
-// A level needs the rack when a whole group of 4 sits in one column: classic play can never
-// match it, because only one of those tiles is free at a time. Not every rack level is locked
-// that way — the first board of each rack world (and Onsen's pyramid) stays a breather.
+// A buried level splits a kind's mates across columns, so the shortest win holds two or three
+// tiles before the first fusion. The first board of each rack world (and Onsen's pyramid) stays a breather.
 import { describe, expect, it } from 'vitest';
-import { ALL_LEVELS, LAYOUTS, campaignBury } from '../src/levels';
-import { deal, playRack, type Tile } from '../src/engine';
+import { ALL_LEVELS, LAYOUTS, campaignBury, campaignKnots } from '../src/levels';
+import { deal, greedyRack, playRack, type Tile } from '../src/engine';
 import { buryDeal, BURY_RATE, generatedBury, zenLevel, endlessLevel } from '../src/meta';
 
-function lockedGroups(tiles: Tile[]): number {
-  const by = new Map<string, Tile[]>();
-  for (const t of tiles) (by.get(t.kind) ?? by.set(t.kind, []).get(t.kind)!).push(t);
-  let n = 0;
-  for (const ts of by.values()) {
-    if (ts.length < 4) continue;
-    if (new Set(ts.map((t) => `${t.x},${t.y}`)).size === 1) n++;
-  }
-  return n;
-}
-
 const rows = ALL_LEVELS.filter((l) => l.rack > 0).map((l) => {
-  const d = deal(LAYOUTS[l.layout].make(), l.seed, 0, l.rack, campaignBury(l));
-  const greedy = playRack(d.tiles, l.rack);
-  const play = greedy.win && greedy.peak <= l.rack ? greedy : (d.needsRack ? greedy : { win: true, peak: 1, forced: 0 });
-  return { l, needs: lockedGroups(d.tiles) > 0 && d.needsRack, play, forced: d.forced };
+  const d = deal(LAYOUTS[l.layout].make(), l.seed, 0, l.rack, campaignBury(l), campaignKnots(l));
+  const play = playRack(d.tiles, l.rack);
+  const greedy = d.needsRack ? greedyRack(d.tiles, l.rack) : { win: true, peak: play.peak, forced: 0, parks: 0 };
+  return { l, d, needs: d.needsRack, play, greedy };
 });
 
 describe('rack is required on most boards', () => {
@@ -48,9 +36,33 @@ describe('rack is required on most boards', () => {
     expect(rows.filter((r) => r.needs).length / rows.length).toBeGreaterThanOrEqual(0.7);
   });
   it('the temple forces at least as much storage as the onsen, on a smaller rack', () => {
-    const avg = (world: number) => { const ls = rows.filter((r) => r.l.world === world && r.needs); return ls.reduce((a, r) => a + r.forced, 0) / ls.length; };
+    const avg = (world: number) => { const ls = rows.filter((r) => r.l.world === world && r.needs); return ls.reduce((a, r) => a + r.d.forced, 0) / ls.length; };
     expect(avg(4)).toBeGreaterThanOrEqual(avg(1));
     expect(rows.find((r) => r.l.world === 4)!.l.rack).toBeLessThan(rows.find((r) => r.l.world === 1)!.l.rack);
+  });
+  it('most rack-required levels need a careful peak of at least 3, and several fill the rack', () => {
+    const buried = rows.filter((r) => r.needs);
+    for (const row of buried) {
+      expect(row.d.peak, row.l.name).toBeGreaterThanOrEqual(3);
+      expect(row.play.peak, row.l.name).toBeGreaterThanOrEqual(row.d.peak);
+      expect(row.d.peak, row.l.name).toBeLessThanOrEqual(row.l.rack);
+    }
+    expect(buried.filter((r) => r.d.peak >= 3).length).toBeGreaterThanOrEqual(15);
+    const nearFull = buried.filter((r) => r.d.peak >= r.l.rack - 1);
+    expect(nearFull.length).toBeGreaterThanOrEqual(8);
+    // Onsen keeps slack (peak 3–4 on 6 slots). Temple reaches a full rack of 4. Forêt and Montagne sit in between.
+    expect(nearFull.some((r) => r.l.world === 2 || r.l.world === 3)).toBe(true);
+    expect(nearFull.some((r) => r.l.world === 4 && r.d.peak === r.l.rack)).toBe(true);
+    const onsen = buried.filter((r) => r.l.world === 1 && !r.l.secret).map((r) => r.d.peak);
+    expect(Math.min(...onsen)).toBeLessThanOrEqual(3);
+    expect(Math.max(...onsen)).toBeLessThan(6);
+    expect(Math.max(...buried.filter((r) => r.l.world === 4).map((r) => r.d.peak))).toBe(4);
+  });
+  it('a no-lookahead line gets stuck on several boards a careful line clears', () => {
+    const buried = rows.filter((r) => r.needs);
+    const stuck = buried.filter((r) => !r.greedy.win);
+    expect(stuck.length).toBeGreaterThanOrEqual(5);
+    for (const row of stuck) expect(row.play.win, row.l.name).toBe(true);
   });
 });
 
@@ -63,7 +75,7 @@ describe('generated rack boards usually need the rack, without rejecting the res
         const d = deal(LAYOUTS[z.layout].make(), z.seed, 0, z.rack, buryDeal(z));
         const play = playRack(d.tiles, z.rack);
         expect((play.win && play.peak <= z.rack) || !d.needsRack, `${diff} ${s}`).toBe(true);
-        if (lockedGroups(d.tiles) > 0) buried++;
+        if (d.needsRack) buried++;
       }
       expect(buried / N, diff).toBeGreaterThan(0.5);
       expect(buried / N, diff).toBeLessThan(0.98);
@@ -78,7 +90,7 @@ describe('generated rack boards usually need the rack, without rejecting the res
       const d = deal(LAYOUTS[l.layout].make(), l.seed, 0, l.rack, buryDeal(l));
       const play = playRack(d.tiles, l.rack);
       expect((play.win && play.peak <= l.rack) || !d.needsRack, `round ${r}`).toBe(true);
-      if (lockedGroups(d.tiles) > 0) buried++;
+      if (d.needsRack) buried++;
     }
     expect(buried / N).toBeGreaterThan(0.45);
     expect(buried / N).toBeLessThan(0.98);

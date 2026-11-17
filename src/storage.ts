@@ -10,7 +10,7 @@ export interface Run { level: PlayLevel; kinds: string[]; removed: number[]; his
 export const KEY = 'capy-mahjong-v1';
 export const BACKUP_KEY = 'capy-mahjong-v1.bak';
 export const CORRUPT_KEY = 'capy-mahjong-v1.corrupt';
-export interface Save { stars: Record<number, number>; best: Record<string, number>; settings: { sfx: boolean; music: boolean; musicVol: number; sfxVol: number; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean; v?: number }; seenHowTo: boolean; seenUndo?: boolean; /** Rack coach already shown. Absent on old saves = false. */ seenRack?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; /** tile back */ edge: string; /** onsen decorations shown on the home screen */ decor: string[]; diff: Diff; run: Run | null; firstDay?: string }
+export interface Save { stars: Record<number, number>; best: Record<string, number>; settings: { sfx: boolean; music: boolean; musicVol: number; sfxVol: number; dim: boolean; vibrate: boolean; hl: boolean; autohint: boolean; v?: number }; seenHowTo: boolean; seenUndo?: boolean; /** Rack coach already shown. Absent on old saves = false. */ seenRack?: boolean; /** Onsen tip about planning several parks before the first fusion. */ seenRackPlan?: boolean; stats: Stats; ach: string[]; outfit: string; carrots: number; owned: string[]; theme: Theme; bg: string; /** tile back */ edge: string; /** onsen decorations shown on the home screen */ decor: string[]; diff: Diff; run: Run | null; firstDay?: string }
 /** Settings schema version. v2: pair highlight ("Montrer les paires possibles") is off by default; older saves are switched off once. */
 export const SETTINGS_V = 2;
 const DEF: Save = { stars: {}, best: {}, settings: { sfx: true, music: true, musicVol: 0.45, sfxVol: 0.6, dim: true, vibrate: true, hl: false, autohint: false, v: SETTINGS_V }, seenHowTo: false, stats: NEW_STATS(), ach: [], outfit: 'agrume', carrots: 0, owned: [], theme: 'capy', bg: 'monde', edge: 'bois', decor: [], diff: 'moyen', run: null };
@@ -100,7 +100,7 @@ export function sanitize(x: unknown): Save {
   const i = isObj(x) ? x : {}; const s = defaults();
   if (isObj(i.stars)) for (const [k, v] of Object.entries(i.stars)) { const n = Number(k); if (Number.isInteger(n) && n >= 0 && n < ALL_LEVELS.length && typeof v === 'number') { const st = int(v, 0, 0, 3); if (st) s.stars[n] = st; } }
   if (isObj(i.best)) for (const [k, v] of Object.entries(i.best)) { if ((/^\d{1,2}$/.test(k) && +k < 30) || (k[0] === 'd' && isDay(k.slice(1)))) { const b = int(v, -1, 0, 1e7); if (b >= 0) s.best[k] = b; } }
-  s.settings = migrateSettings(i.settings); s.seenHowTo = bool(i.seenHowTo, false); if (i.seenUndo === true) s.seenUndo = true; if (i.seenRack === true) s.seenRack = true;
+  s.settings = migrateSettings(i.settings); s.seenHowTo = bool(i.seenHowTo, false); if (i.seenUndo === true) s.seenUndo = true; if (i.seenRack === true) s.seenRack = true; if (i.seenRackPlan === true) s.seenRackPlan = true;
   s.stats = stats(i.stats);
   s.ach = Array.isArray(i.ach) ? [...new Set(i.ach.filter((a): a is string => typeof a === 'string' && ACHIEVEMENTS.some((x) => x.id === a)))] : [];
   s.owned = Array.isArray(i.owned) ? [...new Set(i.owned.filter((o): o is string => { if (typeof o !== 'string') return false; const [sh, id] = o.split(':'); return has(SHELVES, sh) && SHELVES[sh as keyof typeof SHELVES].some((it) => it.id === id && !it.legend); }))] : [];

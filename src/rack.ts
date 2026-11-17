@@ -1,6 +1,7 @@
 // Top-rack rules (design doc §4). Pure: the UI applies the returned action and owns score, combo and budgets.
 // A tile in the rack is not removed — it keeps its cell for undo — and it no longer blocks the board.
 import { assignSolvable, clearable, freeTiles, isFree, matches, rng, type Tile } from './engine';
+import { parkOrder } from './knots';
 import { KIND_BY_ID } from './tiles';
 
 export interface RackAction {
@@ -69,8 +70,8 @@ export function fusionOrder(rack: readonly number[], incoming: number, mate: num
 }
 
 /** Hint target. Does not play the move.
- * A bare take is hinted only when the tile's mate is directly underneath: that park is what unlocks a buried group.
- * Parking any other free tile stays unhinted, so a hint never says "store something at random". */
+ * A bare take is the free tile whose mate is buried shallowest — often under another column,
+ * so the hint is "park this one", never "store something at random". */
 export function rackHint(tiles: Tile[], rack: readonly number[], slots: number):
   | { kind: 'match'; boardId: number; rackId: number }
   | { kind: 'pair'; ids: [number, number] }
@@ -87,8 +88,8 @@ export function rackHint(tiles: Tile[], rack: readonly number[], slots: number):
   // One free slot can land a mate, not start a new pair: the second tile would have nowhere to sit.
   if (rack.length >= slots - 1) return null;
   for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) if (matches(free[i].kind, free[j].kind)) return { kind: 'pair', ids: [free[i].id, free[j].id] };
-  const buried = free.find((t) => board.some((o) => o.x === t.x && o.y === t.y && o.z === t.z - 1 && matches(o.kind, t.kind)));
-  return buried ? { kind: 'take', id: buried.id } : null;
+  const planned = parkOrder(tiles, rack)[0];
+  return planned ? { kind: 'take', id: planned.id } : null;
 }
 
 function pairsOf(live: Tile[]): [string, string][] | null {
